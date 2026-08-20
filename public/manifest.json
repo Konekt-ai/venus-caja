@@ -1,0 +1,28 @@
+{
+  "id": "/",
+  "name": "Venus Caja",
+  "short_name": "Caja",
+  "description": "Punto de venta de Venus Boutique.",
+  "lang": "es-MX",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#faf6ee",
+  "theme_color": "#eee5d4",
+  "icons": [
+    {
+      "src": "/icono.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any"
+    },
+    {
+      "src": "/icono.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "maskable"
+    }
+  ]
+}

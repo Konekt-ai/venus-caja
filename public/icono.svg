@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-labelledby="titulo">
+  <title id="titulo">Venus Caja</title>
+  <!--
+    La misma V del sistema de bodega: fondo beige, la V en tinta y el filete
+    de vino debajo. Va en SVG y no en PNG porque este archivo se escribe a
+    mano y un PNG no se puede dibujar aqui.
+
+    El dibujo se queda dentro del circulo de en medio (radio 205 desde el
+    centro) para que Android lo pueda recortar redondo, que es lo que hace
+    con los iconos "maskable", sin comerse ni un pedazo de la letra.
+  -->
+  <rect width="512" height="512" fill="#eee5d4" />
+
+  <!-- Los remates de arriba, que es lo que le da el aire de Georgia. -->
+  <rect x="112" y="146" width="122" height="16" fill="#1a1613" />
+  <rect x="300" y="146" width="86" height="16" fill="#1a1613" />
+
+  <!-- La V: trazo grueso a la izquierda y delgado a la derecha. -->
+  <path d="M128 156 L216 156 L262 296 L318 156 L368 156 L276 366 L244 366 Z" fill="#1a1613" />
+
+  <!-- El filete de vino, el mismo detalle que lleva cada titulo. -->
+  <rect x="176" y="398" width="160" height="8" rx="4" fill="#8c2740" />
+</svg>

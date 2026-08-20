@@ -1,0 +1,21 @@
+node_modules/
+.next/
+out/
+build/
+
+# Base de datos y respaldos: son datos del negocio, no van al repositorio.
+# La caja no tiene base propia, escribe en la de la bodega, pero los
+# respaldos automaticos si caen aqui.
+data/*.db
+data/*.db-shm
+data/*.db-wal
+respaldos/
+
+# Configuracion de la instalacion: rutas, llaves y dominio del tunel.
+.env
+.env.local
+
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+Thumbs.db
