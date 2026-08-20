@@ -112,7 +112,10 @@ function desempaquetar(galleta: string): Sesion | null {
   if (!crypto.timingSafeEqual(Buffer.from(firma), Buffer.from(esperada))) return null;
   try {
     const sesion = JSON.parse(Buffer.from(cuerpo, "base64url").toString()) as Sesion;
-    if (!sesion?.id || sesion.vence < Date.now()) return null;
+    // El duenio entra con el id 0, que no esta en la tabla de personal. Aqui
+    // hay que preguntar si el id es un numero, no si "tiene valor": un cero
+    // se lee como vacio y dejaba al duenio sin poder abrir sus pantallas.
+    if (typeof sesion?.id !== "number" || !sesion.nombre || sesion.vence < Date.now()) return null;
     return sesion;
   } catch {
     return null;

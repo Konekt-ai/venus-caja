@@ -117,6 +117,7 @@ export default function GestorProductos({ catalogo }: { catalogo: ModeloCaja[] }
   const cambiarFiltro = (aplicar: () => void) => {
     aplicar();
     setSeleccion([]);
+    setCapturados([]);
   };
 
   const palomear = (id: number) => {
@@ -139,6 +140,7 @@ export default function GestorProductos({ catalogo }: { catalogo: ModeloCaja[] }
         const centavos = resultado.datos?.precio ?? 0;
         setBorradores((antes) => ({ ...antes, [modelo.id]: centavos > 0 ? pesosSimple(centavos) : "" }));
         setRecienGuardado(modelo.id);
+        setCapturados((antes) => (antes.includes(modelo.id) ? antes : antes.concat(modelo.id)));
         setAviso({ tipo: "ok", texto: resultado.mensaje ?? "Precio guardado." });
       } else {
         setAviso({ tipo: "error", texto: resultado.error });
@@ -171,6 +173,7 @@ export default function GestorProductos({ catalogo }: { catalogo: ModeloCaja[] }
           for (const id of seleccion) copia[id] = pesosSimple(centavos);
           return copia;
         });
+        setCapturados((antes) => Array.from(new Set(antes.concat(seleccion))));
         setSeleccion([]);
         setPrecioVarios("");
         setAviso({ tipo: "ok", texto: resultado.mensaje ?? "Listo." });
@@ -579,7 +582,7 @@ export default function GestorProductos({ catalogo }: { catalogo: ModeloCaja[] }
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex items-center justify-end gap-2">
-                        {modelo.precio <= 0 && borradores[modelo.id] === undefined ? (
+                        {modelo.precio <= 0 && !comoSeVe(modelo, borradores[modelo.id]).trim() ? (
                           <Insignia tono="aviso">Falta</Insignia>
                         ) : null}
                         {recienGuardado === modelo.id ? (

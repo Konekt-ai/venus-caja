@@ -1,6 +1,14 @@
 import Link from "next/link";
 import { salir } from "@/acciones/sesion";
-import { IconoCobrar, IconoEtiqueta, IconoHistorial, IconoPersona, IconoPrenda, IconoReportes } from "./iconos";
+import {
+  IconoAjustes,
+  IconoCobrar,
+  IconoEtiqueta,
+  IconoHistorial,
+  IconoPersona,
+  IconoPrenda,
+  IconoReportes,
+} from "./iconos";
 
 /**
  * La barra de arriba de las pantallas que no son la de cobrar.
@@ -16,6 +24,7 @@ export default function Navegacion({ nombre, duenio }: { nombre: string; duenio:
     { href: "/reportes", texto: "Reportes", Icono: IconoReportes, siempre: false },
     { href: "/vendedoras", texto: "Vendedoras", Icono: IconoPersona, siempre: false },
     { href: "/etiquetas", texto: "Etiquetas", Icono: IconoEtiqueta, siempre: false },
+    { href: "/ajustes", texto: "Ajustes", Icono: IconoAjustes, siempre: false },
   ].filter((e) => e.siempre || duenio);
 
   return (
