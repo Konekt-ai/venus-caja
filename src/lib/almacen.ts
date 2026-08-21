@@ -15,6 +15,7 @@ const LLAVE_COLA = "venus_caja_cola";
 const LLAVE_CATALOGO = "venus_caja_catalogo";
 const LLAVE_ESPERA = "venus_caja_espera";
 const LLAVE_FOLIO = "venus_caja_folio";
+const LLAVE_EN_CURSO = "venus_caja_en_curso";
 
 function leer<T>(llave: string, siNoHay: T): T {
   try {
@@ -163,6 +164,33 @@ export async function vaciarCola(): Promise<{
     }
   }
   return { subidas, pendientes: cola().length, cambiosDeFolio };
+}
+
+// --- La venta que se esta cobrando ----------------------------------------
+
+/**
+ * Lo que lleva el mostrador en este momento se guarda en cada cambio.
+ *
+ * Sirve para dos cosas que pasan seguido: que una vendedora entregue el turno
+ * a media venta y la otra entre con su PIN sin que se pierda nada, y que si
+ * alguien recarga sin querer o se va la luz un segundo, la venta siga ahi.
+ */
+export type VentaEnCurso = {
+  lineas: LineaVenta[];
+  descuento_tipo: string;
+  descuento_valor: number;
+};
+
+export function guardarVentaEnCurso(venta: VentaEnCurso): void {
+  if (!venta.lineas.length) {
+    window.localStorage.removeItem(LLAVE_EN_CURSO);
+    return;
+  }
+  escribir(LLAVE_EN_CURSO, venta);
+}
+
+export function ventaEnCurso(): VentaEnCurso | null {
+  return leer<VentaEnCurso | null>(LLAVE_EN_CURSO, null);
 }
 
 // --- Ventas en espera -----------------------------------------------------

@@ -1,6 +1,8 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { salir } from "@/acciones/sesion";
 import {
   ajustarFolioLocal,
   catalogoGuardado,
@@ -8,10 +10,12 @@ import {
   dejarEnEspera,
   encolar,
   guardarCatalogo,
+  guardarVentaEnCurso,
   idUnico,
   retomarDeEspera,
   siguienteFolioLocal,
   vaciarCola,
+  ventaEnCurso,
   ventasEnEspera,
   type VentaEnEspera,
 } from "@/lib/almacen";
@@ -29,7 +33,9 @@ import {
   IconoEspera,
   IconoMenos,
   IconoMas,
+  IconoCandado,
   IconoPalomita,
+  IconoPersona,
   IconoSinRed,
   IconoTarjeta,
   IconoTransferencia,
@@ -82,8 +88,12 @@ export default function Cobrar({ catalogoInicial, vendedora, caja, negocio, ulti
   const [aviso, setAviso] = useState<Aviso>(null);
   const [pendientes, setPendientes] = useState(0);
   const [enLinea, setEnLinea] = useState(true);
+  const [menuVendedora, setMenuVendedora] = useState(false);
 
   const buscador = useRef<HTMLInputElement>(null);
+  const router = useRouter();
+  // Hasta no haber leido lo que estaba a medias, no se guarda nada encima.
+  const yaSeRestauro = useRef(false);
 
   const enfocarBuscador = useCallback(() => {
     window.setTimeout(() => buscador.current?.focus(), 0);
@@ -105,8 +115,27 @@ export default function Cobrar({ catalogoInicial, vendedora, caja, negocio, ulti
     setEspera(ventasEnEspera());
     setPendientes(cola().length);
     setEnLinea(window.navigator.onLine);
+
+    // La venta que estaba a medias vuelve sola: si cambiaron de vendedora a
+    // mitad del cobro, o si alguien recargo sin querer, nadie tiene que
+    // volver a pasar las prendas.
+    const aMedias = ventaEnCurso();
+    if (aMedias && aMedias.lineas.length) {
+      setLineas(aMedias.lineas);
+      setDescuentoTipo(aMedias.descuento_tipo as TipoDescuento);
+      setDescuentoValor(aMedias.descuento_valor);
+    }
+
+    yaSeRestauro.current = true;
     enfocarBuscador();
   }, [catalogoInicial, ultimoFolio, enfocarBuscador]);
+
+  // Se guarda en cada cambio, no al salir: si se va la luz no hay oportunidad
+  // de guardar nada.
+  useEffect(() => {
+    if (!yaSeRestauro.current) return;
+    guardarVentaEnCurso({ lineas, descuento_tipo: descuentoTipo, descuento_valor: descuentoValor });
+  }, [lineas, descuentoTipo, descuentoValor]);
 
   // --- Subir lo pendiente -------------------------------------------------
   const sincronizar = useCallback(async () => {
@@ -377,7 +406,8 @@ export default function Cobrar({ catalogoInicial, vendedora, caja, negocio, ulti
   useEffect(() => {
     const alTeclear = (e: KeyboardEvent) => {
       // Con una ventana abierta encima, ella manda.
-      const hayVentana = pagando || pidiendoPrecio !== null || pidiendoDescuento || verEspera;
+      const hayVentana =
+        pagando || pidiendoPrecio !== null || pidiendoDescuento || verEspera || menuVendedora;
 
       if (e.key === "F4") {
         e.preventDefault();
@@ -399,12 +429,19 @@ export default function Cobrar({ catalogoInicial, vendedora, caja, negocio, ulti
         if (!hayVentana && espera.length) setVerEspera(true);
         return;
       }
+      if (e.key === "F10") {
+        // El cambio de turno pasa en el mostrador, no en otra pantalla.
+        e.preventDefault();
+        if (!hayVentana) router.push("/entrar");
+        return;
+      }
       if (e.key === "Escape") {
         if (hayVentana) {
           setPagando(false);
           setPidiendoPrecio(null);
           setPidiendoDescuento(false);
           setVerEspera(false);
+          setMenuVendedora(false);
           enfocarBuscador();
         } else if (texto) {
           setTexto("");
@@ -452,6 +489,8 @@ export default function Cobrar({ catalogoInicial, vendedora, caja, negocio, ulti
     texto,
     quitar,
     enfocarBuscador,
+    menuVendedora,
+    router,
   ]);
 
   return (
@@ -473,7 +512,44 @@ export default function Cobrar({ catalogoInicial, vendedora, caja, negocio, ulti
               <IconoSinRed tamano={14} /> Sin conexion
             </Insignia>
           ) : null}
-          <span className="text-sm font-semibold text-tinta">{vendedora.nombre}</span>
+          {/* El nombre es el boton: es donde la vendedora ya esta mirando
+              cuando quiere entregar el turno. */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setMenuVendedora((abierto) => !abierto)}
+              className="flex items-center gap-2 rounded-sm border border-linea-fuerte bg-papel px-3 py-1.5 text-sm font-semibold text-tinta hover:border-oro hover:bg-oro-tenue"
+            >
+              <IconoPersona tamano={16} />
+              {vendedora.nombre}
+              <span className="text-[0.65rem] font-normal text-humo">F10</span>
+            </button>
+
+            {menuVendedora ? (
+              <div className="absolute right-0 top-full z-40 mt-1 w-64 rounded-sm border border-linea-fuerte bg-papel p-3">
+                <p className="mb-3 text-xs leading-relaxed text-humo">
+                  La venta que llevas no se pierde: al volver a entrar sigue aqui.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => router.push("/entrar")}
+                  className="mb-2 flex w-full items-center gap-2 rounded-sm bg-vino px-3 py-2.5 text-sm font-semibold text-marfil hover:bg-vino-oscuro"
+                >
+                  <IconoPersona tamano={16} />
+                  Cambiar de vendedora
+                </button>
+                <form action={salir}>
+                  <button
+                    type="submit"
+                    className="flex w-full items-center gap-2 rounded-sm border border-linea-fuerte px-3 py-2.5 text-sm font-semibold text-tinta hover:border-oro"
+                  >
+                    <IconoCandado tamano={16} />
+                    Cerrar la caja
+                  </button>
+                </form>
+              </div>
+            ) : null}
+          </div>
         </div>
       </header>
 

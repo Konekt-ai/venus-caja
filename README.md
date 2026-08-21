@@ -52,10 +52,25 @@ manda Enter.
 | `F6` | descuento (en por ciento o en pesos) |
 | `F8` | dejar la venta en espera y atender a otra clienta |
 | `F9` | retomar una venta que quedo en espera |
+| `F10` | cambiar de vendedora (entrega de turno) |
 | `Supr` | quitar la ultima prenda |
 | `Esc` | cerrar lo que este abierto |
 
 Al cobrar en efectivo, `E` elige efectivo, `T` tarjeta y `R` transferencia.
+
+### Entrar, cambiar de turno y salir
+
+Cada vendedora entra con su PIN en la pantalla de entrada, y la sesion dura
+doce horas: una jornada completa, para que no se cierre a media tarde.
+
+Para entregar el turno se aprieta `F10` o se toca el nombre de arriba a la
+derecha, y la otra vendedora entra con su PIN. **La venta que este a medias no
+se pierde**: se queda guardada en la computadora y reaparece en cuanto la
+siguiente entra. Lo mismo pasa si alguien recarga la pagina sin querer o si se
+va la luz un momento.
+
+En ese mismo lugar esta **Cerrar la caja**, que es lo que se usa al terminar el
+dia. Desde las otras pantallas se sale con el boton de la barra de arriba.
 
 ### La busqueda perdona
 
