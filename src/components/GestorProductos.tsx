@@ -485,8 +485,10 @@ export default function GestorProductos({ catalogo }: { catalogo: ModeloCaja[] }
         </Tarjeta>
       ) : null}
 
+      {/* La barra de seleccion se despega del fondo con un borde mas fuerte y
+          no con sombra: la identidad de la tienda es de bordes finos. */}
       {seleccion.length > 0 ? (
-        <div className="sticky top-2 z-10 rounded-sm border border-oro bg-oro-tenue p-3 shadow-sm">
+        <div className="sticky top-2 z-10 rounded-sm border-2 border-oro bg-oro-tenue p-3">
           <div className="flex flex-wrap items-end gap-3">
             <p className="flex min-h-11 items-center text-sm font-semibold text-tinta">
               {seleccion.length} {seleccion.length === 1 ? "modelo elegido" : "modelos elegidos"}
