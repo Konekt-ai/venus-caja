@@ -131,22 +131,19 @@ dominio; hazlo y espera a que diga **Active** (tarda de minutos a unas horas).
 nombre `venus-caja` y guarda.
 
 **3.** Cloudflare te muestra una pantalla con el comando para instalarlo.
-Elige **Windows** y **64-bit**. Te va a dar dos cosas:
+Elige **Windows** y **64-bit**. Lo unico que se necesita de ahi es el
+**token**: la tira larguisima de letras (empieza con `eyJ`) al final del
+comando que ensena.
 
-- Un enlace para bajar `cloudflared.exe`. Bajalo y guardalo, por ejemplo, en
-  `C:\Venus\cloudflared.exe`.
-- Un comando largo que termina con un token (una tira larguisima de letras).
+**4.** En la computadora de la bodega, corre **`INSTALAR-TUNEL.bat`** (esta
+junto a `INSTALAR.bat`) como administrador y pegale el token cuando lo pida.
+El se encarga de bajar `cloudflared.exe` a `C:\Venus` y dejarlo instalado
+**como servicio de Windows**: arranca solo cuando prende la computadora,
+igual que la caja, y no hay que abrir ninguna ventana.
 
-**4.** En la computadora de la bodega, abre una Terminal **como
-administrador** y corre ese comando, apuntando al archivo que bajaste. Se ve
-mas o menos asi (el token es el tuyo, no copies este):
-
-```
-C:\Venus\cloudflared.exe service install eyJhIjoiMWEyYjNjNGQ1ZTZmN2c...
-```
-
-Eso deja el tunel instalado **como servicio de Windows**: arranca solo cuando
-prende la computadora, igual que la caja, y no hay que abrir ninguna ventana.
+> A mano seria: bajar `cloudflared.exe` del enlace que da Cloudflare y correr
+> `C:\Venus\cloudflared.exe service install <token>` en una Terminal de
+> administrador. El .bat hace exactamente eso, con sus avisos.
 
 **5.** Vuelve a la pagina de Cloudflare. Ahora te pide la ruta publica. Llena:
 
@@ -163,8 +160,8 @@ Guarda. En un minuto la caja ya se abre desde cualquier lado en
 > Fijate que sea `localhost:3001` y no otro puerto: 3001 es el de la caja.
 > El 3000 es el sistema de bodega, y ese **no** conviene publicarlo.
 
-**6.** Comprueba desde tu celular con los datos moviles apagados del WiFi de
-la bodega. Si abre, quedo.
+**6.** Comprueba desde tu celular usando datos moviles, con el WiFi de la
+bodega apagado. Si abre, quedo.
 
 ### Un candado extra (opcional pero recomendable)
 
@@ -329,7 +326,11 @@ Ojo: se pierde todo lo que haya pasado entre la hora del respaldo y ahorita.
 **La tienda dice que no abre la pagina.**
 Casi siempre es que apagaron la computadora de la bodega. Que alguien vaya a
 ver si esta prendida. Si esta prendida, revisa que exista la ventana negra de
-la caja; si no esta, dale doble clic a INICIAR.bat.
+la caja; si no esta, dale doble clic a INICIAR.bat. Y si la caja SI abre en
+la bodega (`http://localhost:3001`) pero la tienda no entra, el caido es el
+tunel: revisa en la pagina de Cloudflare que el tunel diga **HEALTHY**, o en
+la bodega corre `sc query Cloudflared` en una terminal; si no esta corriendo,
+`net start Cloudflared` o reinicia la computadora.
 
 **Abre la pagina pero dice que no encuentra la base de datos.**
 Se movio la carpeta del sistema de bodega. Abre el archivo `.env.local` de

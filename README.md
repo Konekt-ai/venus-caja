@@ -22,8 +22,11 @@ se cierra la ventana.
 - En la computadora de la tienda: la direccion de internet que quedo
   configurada (ver `docs/INSTALACION.md`)
 
-La primera vez hay que instalarlo: doble clic en **`INSTALAR.bat`**, una sola
-vez, y el mismo archivo va explicando lo que hace.
+La primera vez hay que instalarlo: clic derecho en **`INSTALAR.bat`** >
+Ejecutar como administrador, una sola vez, y el mismo archivo va explicando
+lo que hace. Para que la tienda entre por internet hay un segundo instalador,
+**`INSTALAR-TUNEL.bat`** (los pasos previos en Cloudflare vienen en
+`docs/INSTALACION.md`, seccion 3).
 
 ---
 
@@ -171,6 +174,10 @@ se corrige ni se esconde, que es justo lo que sirve para revisarla despues.
   existe es Chrome 109 o Firefox ESR 115. Por eso el proyecto esta fijado en
   Next.js 15 y Tailwind 3: las versiones siguientes no corren en ese navegador.
   No actualizar esas dos sin leer `docs/INSTALACION.md`.
+- **La tienda entra por un tunel de Cloudflare** instalado como servicio de
+  Windows (se llama `Cloudflared`) en la computadora de la bodega, con
+  `INSTALAR-TUNEL.bat`. Si la tienda no entra pero la bodega si, ese servicio
+  es el sospechoso: `sc query Cloudflared`.
 
 ---
 
