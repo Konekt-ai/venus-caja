@@ -8,7 +8,7 @@ para escribir, asi que se pueden correr las pruebas a media jornada sin miedo. S
 esta instalada en otro lado, se le dice cual base copiar: `VENUS_DB_REAL=C:/Venus/venus-gestion/data/venus.db npm test`.
 Sobre la copia se siembra lo minimo para poder cobrar (una vendedora y piezas en la tienda)
 y de ahi en adelante todo pasa por las mismas funciones que usa la pantalla de cobrar,
-`registrarVenta` y `cancelarVenta`, con el catalogo real de 129 modelos. Cada renglon sale
+`registrarVenta` y `cancelarVenta`, con el catalogo real completo. Cada renglon sale
 con `ok` o con `FALLA`; al final dice cuantas pasaron y, si fallo alguna, el programa termina
 con error para que se note en la consola.
 
@@ -28,24 +28,16 @@ el corte del dia cuadre por forma de pago, numero de ventas y ticket promedio co
 libreta que las pruebas llevan aparte conforme cobran; **8** que dos ventas de verdad
 simultaneas (dos procesos distintos, sincronizados al mismo milisegundo) no saquen el mismo
 folio; **9** que una venta cobrada ayer sin internet y subida hoy conserve la fecha de ayer;
-y **10** que un renglon con piezas negativas o con media pieza no pase.
+**10** que un renglon con piezas negativas o con media pieza no pase; **11** que una etiqueta
+con un codigo que bodega ya corrigio siga encontrando la prenda (la tabla `codigos_anteriores`
+es de bodega y puede no existir: se prueba con y sin ella, que un codigo que fue de dos
+prendas no encuentre ninguna, y que un codigo reasignado abra a su dueno actual); y **12**
+que un precio o una descripcion que bodega acaba de cambiar salgan en la siguiente lectura
+del catalogo, que es lo que la pantalla de cobrar baja cada minuto por `/api/catalogo`.
 
-## Lo que hoy sale en rojo
+## Lo que salia en rojo
 
-Las pruebas 9 y 10 fallan a proposito: encontraron tres cosas que estan mal en
-`src/lib/ventas.ts` y que no se corrigieron aqui, porque ese archivo es de otra persona.
-
-- **La hora del navegador se tira a la basura.** `fechaValida()` solo acepta
-  `2026-08-18 17:30:00` o `2026-08-18T17:30:00`. Si viene con milesimas
-  (`2026-08-18T17:30:00.000`, que es lo que da `toISOString()`), la funcion regresa `null`,
-  la venta se guarda con la fecha del servidor y cae en el corte de HOY. Una venta de ayer
-  aparece cobrada hoy y los dos cortes quedan mal, sin ningun aviso.
-- **Piezas negativas SUBEN el inventario.** Un renglon con `piezas: -3` se acepta: la tienda
-  paso de 47 a 50 piezas al cobrar y la venta quedo con `piezas: -2`. Es una devolucion por
-  la puerta de atras, sin cancelacion y sin rastro.
-- **Media pieza tambien pasa.** Un renglon con `piezas: 1.5` deja la tienda con 48.5 piezas
-  y el corte con piezas fraccionarias.
-
-Las tres se arreglan en el mismo lugar: validando el renglon antes de cobrar (piezas entero
-y mayor que cero) y aceptando la fecha con milesimas. Cuando se corrijan, `npm test` debe
-terminar en verde y sin tocar este archivo.
+Las pruebas 9 y 10 nacieron fallando a proposito: documentaban tres errores de
+`src/lib/ventas.ts` (la fecha con milesimas se tiraba, las piezas negativas subian el
+inventario y la media pieza pasaba). Los tres ya se corrigieron y hoy `npm test` termina
+en verde completo.

@@ -233,6 +233,19 @@ if errorlevel 1 (
   echo        Se guardan los ultimos 30 dias, los mas viejos se borran.
 )
 
+REM schtasks no sabe fijar ni el limite de ejecucion ni los reintentos.
+REM El limite de fabrica es de 72 horas y Windows MATA la tarea al
+REM cumplirlo: la caja se apagaria sola al tercer dia de prendida.
+call "!CARPETA!scripts\afinar-tareas.bat"
+if errorlevel 1 (
+  echo   [aviso] Las tareas quedaron con el limite de 72 horas que trae
+  echo           Windows. Cuando puedas, corre como administrador:
+  echo           scripts\afinar-tareas.bat
+) else (
+  echo   [ok] Sin limite de tiempo y con reintentos: la caja no se
+  echo        apaga sola aunque la computadora dure semanas prendida.
+)
+
 REM --- 5. Probar el respaldo y mostrar direcciones --------------
 echo.
 echo   ------------------------------------------------

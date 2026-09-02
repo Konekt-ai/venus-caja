@@ -158,23 +158,72 @@ export default function Cobrar({ catalogoInicial, vendedora, caja, negocio, ulti
     }
   }, []);
 
+  // --- Bajar lo nuevo del catalogo ----------------------------------------
+  // La pantalla se queda abierta el dia entero: un precio corregido en
+  // bodega, un codigo arreglado o una prenda nueva llegan por este camino,
+  // en el mismo ciclo de cada minuto que sube las ventas.
+  const catalogoNuevo = useRef<{ catalogo: ModeloCaja[]; ultimo_folio: number } | null>(null);
+  const [descargas, setDescargas] = useState(0);
+
+  const refrescarCatalogo = useCallback(async () => {
+    // Sin conexion ni se intenta: se cobra con lo que hay guardado.
+    if (!window.navigator.onLine) return;
+    try {
+      const respuesta = await fetch("/api/catalogo");
+      if (!respuesta.ok) return;
+      const datos = (await respuesta.json()) as { ok?: boolean; catalogo?: ModeloCaja[]; ultimo_folio?: number };
+      if (!datos.ok || !Array.isArray(datos.catalogo) || datos.catalogo.length === 0) return;
+      guardarCatalogo(datos.catalogo);
+      catalogoNuevo.current = { catalogo: datos.catalogo, ultimo_folio: datos.ultimo_folio ?? 0 };
+      setDescargas((n) => n + 1);
+    } catch {
+      // Se fue la red a mitad de la descarga: al minuto se reintenta.
+    }
+  }, []);
+
+  // Lo descargado se aplica cuando nada lo esta usando. Cambiar la lista
+  // debajo de una venta capturada, de una busqueda a medio teclear o con
+  // ventas sin subir (su existencia local ya se desconto y el servidor
+  // todavia no lo sabe) cobraria con datos mezclados.
+  useEffect(() => {
+    const nuevo = catalogoNuevo.current;
+    if (!nuevo) return;
+    const ocupado =
+      lineas.length > 0 ||
+      pagando ||
+      pidiendoPrecio !== null ||
+      pidiendoDescuento ||
+      verEspera ||
+      menuVendedora ||
+      texto !== "" ||
+      pendientes > 0;
+    if (ocupado) return;
+    catalogoNuevo.current = null;
+    setCatalogo(nuevo.catalogo);
+    ajustarFolioLocal(nuevo.ultimo_folio);
+  }, [descargas, lineas.length, pagando, pidiendoPrecio, pidiendoDescuento, verEspera, menuVendedora, texto, pendientes]);
+
   useEffect(() => {
     const volvio = () => {
       setEnLinea(true);
       void sincronizar();
+      void refrescarCatalogo();
     };
     const sefue = () => setEnLinea(false);
     window.addEventListener("online", volvio);
     window.addEventListener("offline", sefue);
     // Cada minuto por si el navegador no avisa del regreso de la conexion,
     // que pasa seguido con el WiFi de la tienda.
-    const reloj = window.setInterval(() => void sincronizar(), 60000);
+    const reloj = window.setInterval(() => {
+      void sincronizar();
+      void refrescarCatalogo();
+    }, 60000);
     return () => {
       window.removeEventListener("online", volvio);
       window.removeEventListener("offline", sefue);
       window.clearInterval(reloj);
     };
-  }, [sincronizar]);
+  }, [sincronizar, refrescarCatalogo]);
 
   // --- Busqueda -----------------------------------------------------------
   const { cantidad: cantidadTecleada, resto } = useMemo(() => partirCantidad(texto), [texto]);

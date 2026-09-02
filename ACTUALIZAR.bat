@@ -137,6 +137,18 @@ if not exist ".next\BUILD_ID" (
 echo.
 echo   [ok] La version nueva quedo lista.
 
+REM Las instalaciones viejas dejaron las tareas programadas con el limite
+REM de 72 horas de fabrica, que apaga la caja sola al tercer dia. Se afina
+REM aqui para que la maquina del cliente se corrija en la siguiente
+REM actualizacion, sin que nadie tenga que entrar a mano.
+call scripts\afinar-tareas.bat
+if errorlevel 1 (
+  echo   [aviso] No se pudieron afinar las tareas programadas. Corre
+  echo           scripts\afinar-tareas.bat como administrador.
+) else (
+  echo   [ok] Tareas programadas sin limite de 72 horas y con reintentos.
+)
+
 REM --- 6. Reiniciar --------------------------------------------
 echo.
 echo   ------------------------------------------------

@@ -10,6 +10,27 @@ import type { ModeloCaja } from "./tipos";
 /** Separador de los codigos de barras juntados por SQL: una coma podria venir dentro de un codigo hecho a mano. */
 const SEPARADOR = String.fromCharCode(31);
 
+/**
+ * La bodega apunta en codigos_anteriores el codigo viejo cada vez que
+ * corrige uno. La tabla es de bodega y una bodega sin actualizar no la
+ * tiene; meterla al SQL sin preguntar tumbaria el catalogo completo.
+ *
+ * Solo se recuerda el "si existe". El "no" se vuelve a preguntar en cada
+ * carga: si se recordara, actualizar la bodega no surtiria efecto en la
+ * caja hasta reiniciarla, y nadie va a saber que eso hacia falta.
+ */
+let bodegaGuardaCodigosAnteriores = false;
+
+function hayCodigosAnteriores(): boolean {
+  if (!bodegaGuardaCodigosAnteriores) {
+    const fila = getDb()
+      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'codigos_anteriores'")
+      .get();
+    if (fila) bodegaGuardaCodigosAnteriores = true;
+  }
+  return bodegaGuardaCodigosAnteriores;
+}
+
 type FilaModelo = {
   id: number;
   codigo: string;
@@ -21,7 +42,12 @@ type FilaModelo = {
   precio: number | null;
   en_tienda: number;
   barras: string | null;
+  barras_viejas: string | null;
 };
+
+function partirBarras(juntas: string | null): string[] {
+  return juntas ? juntas.split(SEPARADOR) : [];
+}
 
 /**
  * El catalogo entero, con precio y existencia de tienda.
@@ -32,12 +58,33 @@ type FilaModelo = {
  * y que se pueda seguir cobrando si se cae la conexion.
  */
 export function catalogoParaCaja(): ModeloCaja[] {
+  // Un codigo viejo solo sirve de alias mientras siga siendo inequivoco.
+  // Si dos prendas lo tuvieron, o si hoy es el codigo vigente o un alias
+  // manual de otra, escanearlo cobraria la prenda equivocada sin aviso,
+  // porque en la busqueda el codigo de barras le gana hasta al codigo
+  // exacto. Mejor no encontrar nada y que la vendedora pregunte; la bodega
+  // resuelve el mismo caso igual.
+  const barrasViejas = hayCodigosAnteriores()
+    ? `(SELECT group_concat(ca.codigo_norm, char(31))
+          FROM codigos_anteriores ca
+         WHERE ca.modelo_id = m.id
+           AND NOT EXISTS (SELECT 1 FROM codigos_anteriores ca2
+                            WHERE ca2.codigo_norm = ca.codigo_norm
+                              AND ca2.modelo_id <> ca.modelo_id)
+           AND NOT EXISTS (SELECT 1 FROM modelos m2
+                            WHERE m2.codigo_norm = ca.codigo_norm)
+           AND NOT EXISTS (SELECT 1 FROM caja_codigos_barras cb2
+                            WHERE cb2.codigo_barras = ca.codigo_norm
+                              AND cb2.modelo_id <> ca.modelo_id))`
+    : "NULL";
+
   const filas = getDb()
     .prepare(
       `SELECT m.id, m.codigo, m.codigo_norm, m.prefijo, m.numero, m.descripcion,
               m.categoria, p.precio AS precio, m.en_tienda,
               (SELECT group_concat(cb.codigo_barras, char(31))
-                 FROM caja_codigos_barras cb WHERE cb.modelo_id = m.id) AS barras
+                 FROM caja_codigos_barras cb WHERE cb.modelo_id = m.id) AS barras,
+              ${barrasViejas} AS barras_viejas
          FROM modelos m
          LEFT JOIN caja_precios p ON p.modelo_id = m.id
         WHERE m.activo = 1
@@ -55,7 +102,9 @@ export function catalogoParaCaja(): ModeloCaja[] {
     categoria: f.categoria,
     precio: f.precio ?? 0,
     en_tienda: f.en_tienda,
-    barras: f.barras ? f.barras.split(SEPARADOR) : [],
+    // El Set quita repetidos: un codigo viejo puede estar tambien capturado
+    // como alias manual de la misma prenda, y dos veces no aporta nada.
+    barras: [...new Set([...partirBarras(f.barras), ...partirBarras(f.barras_viejas)])],
   }));
 }
 

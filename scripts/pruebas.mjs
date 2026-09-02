@@ -88,9 +88,10 @@ const URL_VENTAS = pathToFileURL(path.join(RAIZ, "src", "lib", "ventas.ts")).hre
 
 const { getDb } = await import(pathToFileURL(path.join(RAIZ, "src", "lib", "db.ts")).href);
 const { registrarVenta, cancelarVenta } = await import(URL_VENTAS);
-const { corteDelDia, obtenerVenta, ventasDelDia } = await import(
+const { catalogoParaCaja, corteDelDia, obtenerVenta, ventasDelDia } = await import(
   pathToFileURL(path.join(RAIZ, "src", "lib", "consultas.ts")).href
 );
+const { buscar, hayEmpate } = await import(pathToFileURL(path.join(RAIZ, "src", "lib", "busqueda.ts")).href);
 
 const db = getDb();
 
@@ -649,6 +650,125 @@ comprobar(
   Number.isInteger(enTienda(C.id)),
   "la tienda quedo con " + enTienda(C.id) + " piezas"
 );
+
+// =======================================================================
+seccion("11. Etiquetas con el codigo viejo");
+// =======================================================================
+// La bodega corrige codigos mal capturados y apunta el viejo en su tabla
+// codigos_anteriores. Las etiquetas ya pegadas en la ropa traen el codigo
+// de antes, y escanearlas tiene que seguir encontrando la prenda. La tabla
+// es de bodega: puede no existir todavia, y la caja debe cargar igual. Se
+// prueba primero sin la tabla y luego con ella EN EL MISMO PROCESO, para
+// comprobar que el "no existe" no se queda pegado en la memoria de la caja.
+
+db.prepare("DROP TABLE IF EXISTS codigos_anteriores").run();
+
+function modeloDelCatalogo(cat, id) {
+  return cat.find((mo) => mo.id === id);
+}
+
+const catalogoSinTabla = catalogoParaCaja();
+comprobar(
+  "sin la tabla de bodega, el catalogo carga completo",
+  catalogoSinTabla.length >= 4,
+  "cargo " + catalogoSinTabla.length + " modelos"
+);
+
+const normA = db.prepare("SELECT codigo_norm FROM modelos WHERE id = ?").get(A.id).codigo_norm;
+const conActual = buscar(catalogoSinTabla, normA, 8);
+comprobar(
+  "la etiqueta con el codigo vigente encuentra su prenda",
+  Boolean(conActual[0]) && conActual[0].id === A.id,
+  "buscar " + normA + " dio " + JSON.stringify(conActual.map((mo) => mo.codigo))
+);
+
+// La tabla tal cual la crea la bodega (sin UNIQUE en codigo_norm: un codigo
+// liberado se puede reasignar). Crearla aqui esta bien porque esto es una
+// COPIA de prueba; en produccion la crea la bodega y la caja jamas.
+db.exec(`CREATE TABLE codigos_anteriores (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  modelo_id     INTEGER NOT NULL REFERENCES modelos(id) ON DELETE CASCADE,
+  codigo        TEXT    NOT NULL,
+  codigo_norm   TEXT    NOT NULL,
+  codigo_nuevo  TEXT    NOT NULL,
+  cambiado_en   TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+)`);
+
+const apuntarViejo = db.prepare(
+  "INSERT INTO codigos_anteriores (modelo_id, codigo, codigo_norm, codigo_nuevo) VALUES (?, ?, ?, ?)"
+);
+// El caso normal: a la prenda A le corrigieron el codigo y su etiqueta vieja dice ZZVIEJO1.
+apuntarViejo.run(A.id, "ZZ VIEJO 1", "ZZVIEJO1", A.codigo);
+// La misma correccion apuntada dos veces (corrigieron ida y vuelta): no debe duplicar el alias.
+apuntarViejo.run(A.id, "ZZ VIEJO 1", "ZZVIEJO1", A.codigo);
+// Un codigo que en su momento fue de DOS prendas distintas: reciclado, nadie lo debe encontrar.
+apuntarViejo.run(A.id, "ZZ REP 7", "ZZREP7", A.codigo);
+apuntarViejo.run(B.id, "ZZ REP 7", "ZZREP7", B.codigo);
+// Un codigo liberado por B que hoy es el codigo vigente de C: manda el dueno actual.
+const normC = db.prepare("SELECT codigo_norm FROM modelos WHERE id = ?").get(C.id).codigo_norm;
+apuntarViejo.run(B.id, normC, normC, B.codigo);
+// Un codigo viejo de A que ya esta capturado como alias manual de D: el alias manual manda.
+db.prepare("INSERT INTO caja_codigos_barras (codigo_barras, modelo_id) VALUES ('ZZALIAS9', ?)").run(D.id);
+apuntarViejo.run(A.id, "ZZ ALIAS 9", "ZZALIAS9", A.codigo);
+
+const catalogoConTabla = catalogoParaCaja();
+const modeloA = modeloDelCatalogo(catalogoConTabla, A.id);
+comprobar(
+  "la tabla nueva se nota sin reiniciar la caja",
+  modeloA.barras.includes("ZZVIEJO1"),
+  "las barras de A quedaron " + JSON.stringify(modeloA.barras)
+);
+iguales(
+  "la correccion apuntada dos veces entra como un solo alias",
+  modeloA.barras.filter((b) => b === "ZZVIEJO1").length,
+  1
+);
+
+const conViejo = buscar(catalogoConTabla, "ZZVIEJO1", 8);
+comprobar(
+  "escanear la etiqueta vieja encuentra la prenda",
+  conViejo.length === 1 && conViejo[0].id === A.id,
+  "buscar ZZVIEJO1 dio " + JSON.stringify(conViejo.map((mo) => mo.codigo))
+);
+comprobar("y entra directo, sin pedir que se elija", hayEmpate(catalogoConTabla, "ZZVIEJO1") === false);
+
+iguales("un codigo que fue de dos prendas no encuentra ninguna", buscar(catalogoConTabla, "ZZREP7", 8).length, 0);
+
+const conReasignado = buscar(catalogoConTabla, normC, 8);
+comprobar(
+  "un codigo reasignado abre a su dueno actual, no al anterior",
+  Boolean(conReasignado[0]) && conReasignado[0].id === C.id,
+  "buscar " + normC + " dio " + JSON.stringify(conReasignado.map((mo) => mo.codigo))
+);
+comprobar(
+  "y no queda colgado como alias del dueno anterior",
+  !modeloDelCatalogo(catalogoConTabla, B.id).barras.includes(normC),
+  "las barras de B quedaron " + JSON.stringify(modeloDelCatalogo(catalogoConTabla, B.id).barras)
+);
+
+comprobar(
+  "un codigo viejo que ya es alias manual de otra prenda no compite",
+  !modeloA.barras.includes("ZZALIAS9") && modeloDelCatalogo(catalogoConTabla, D.id).barras.includes("ZZALIAS9"),
+  "A quedo con " + JSON.stringify(modeloA.barras) + " y D con " + JSON.stringify(modeloDelCatalogo(catalogoConTabla, D.id).barras)
+);
+
+// =======================================================================
+seccion("12. Lo que bodega cambia llega al siguiente catalogo");
+// =======================================================================
+// La pantalla de cobrar baja el catalogo cada minuto por /api/catalogo.
+// Aqui se comprueba la parte del servidor: que una nueva lectura ya traiga
+// el precio y la descripcion que bodega acaba de cambiar, sin reiniciar.
+db.prepare(
+  `INSERT INTO caja_precios (modelo_id, precio) VALUES (?, ?)
+   ON CONFLICT(modelo_id) DO UPDATE SET precio = excluded.precio,
+                                        actualizado_en = datetime('now','localtime')`
+).run(D.id, 77700);
+db.prepare("UPDATE modelos SET descripcion = 'VESTIDO CORREGIDO EN BODEGA' WHERE id = ?").run(D.id);
+
+const relectura = catalogoParaCaja();
+const modeloD = modeloDelCatalogo(relectura, D.id);
+iguales("el precio que bodega guardo sale en la relectura", modeloD.precio, 77700);
+iguales("la descripcion corregida sale en la relectura", modeloD.descripcion, "VESTIDO CORREGIDO EN BODEGA");
 
 // --- Recoger -----------------------------------------------------------
 db.close();
