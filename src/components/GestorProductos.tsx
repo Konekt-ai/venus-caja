@@ -103,8 +103,9 @@ export default function GestorProductos({ catalogo }: { catalogo: ModeloCaja[] }
     // modelo "084" alla, aqui tiene que encontrarlo igual.
     const base = busqueda.trim() ? buscar(catalogo, busqueda, catalogo.length) : catalogo;
     const recien = new Set(capturados);
+    const prefijoBuscado = linea === "(sin)" ? "" : linea;
     return base.filter((modelo) => {
-      if (linea && modelo.prefijo !== linea) return false;
+      if (linea && modelo.prefijo !== prefijoBuscado) return false;
       if (soloSinPrecio && modelo.precio > 0 && !recien.has(modelo.id)) return false;
       return true;
     });
@@ -255,7 +256,9 @@ export default function GestorProductos({ catalogo }: { catalogo: ModeloCaja[] }
     <div className="space-y-5">
       {aviso ? <Aviso tipo={aviso.tipo === "ok" ? "ok" : "error"}>{aviso.texto}</Aviso> : null}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      {/* Tres en un renglon tambien en telefono: con dos y una quedaba
+          una tarjeta viuda ocupando media pantalla. */}
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
         <Cifra valor={catalogo.length} texto="Modelos en el catalogo" />
         <Cifra valor={catalogo.length - sinPrecio} texto="Ya tienen precio" tono="ok" />
         <Cifra valor={sinPrecio} texto="Les falta precio" tono={sinPrecio > 0 ? "aviso" : "neutro"} />
@@ -282,26 +285,29 @@ export default function GestorProductos({ catalogo }: { catalogo: ModeloCaja[] }
             </div>
           </div>
 
-          <div>
+          <div className="w-full sm:w-auto">
             <label className="etiqueta" htmlFor="linea-modelo">
               Linea
             </label>
             <select
               id="linea-modelo"
-              className="campo w-44"
+              className="campo w-full sm:w-44"
               value={linea}
               onChange={(e) => cambiarFiltro(() => setLinea(e.target.value))}
             >
+              {/* Los modelos sin letras tienen prefijo vacio, igual que
+                  "Todas": con el mismo value el filtro nunca distinguia.
+                  El (sin) es el comodin que la vuelve elegible. */}
               <option value="">Todas las lineas</option>
               {lineas.map((prefijo) => (
-                <option key={prefijo || "solo-numero"} value={prefijo}>
+                <option key={prefijo || "solo-numero"} value={prefijo || "(sin)"}>
                   {prefijo || "Sin letras"}
                 </option>
               ))}
             </select>
           </div>
 
-          <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-sm border border-linea-fuerte bg-crema px-3">
+          <label className="flex min-h-11 w-full cursor-pointer items-center gap-2 rounded-sm border border-linea-fuerte bg-crema px-3 sm:w-auto">
             <input
               type="checkbox"
               className="h-4 w-4 accent-vino"
@@ -311,9 +317,12 @@ export default function GestorProductos({ catalogo }: { catalogo: ModeloCaja[] }
             <span className="text-sm font-medium text-tinta">Solo los que no tienen precio</span>
           </label>
 
-          <div className="flex flex-1 justify-end gap-2">
+          {/* En telefono los dos botones llenan su renglon a medias; en
+              pantalla ancha se van a la derecha como siempre. */}
+          <div className="flex w-full gap-2 sm:w-auto sm:flex-1 sm:justify-end">
             <Boton
               variante="primario"
+              className="flex-1 sm:flex-none"
               onClick={() => {
                 setAlta(!alta);
                 setImportando(false);
@@ -323,6 +332,7 @@ export default function GestorProductos({ catalogo }: { catalogo: ModeloCaja[] }
               Modelo nuevo
             </Boton>
             <Boton
+              className="flex-1 sm:flex-none"
               onClick={() => {
                 setImportando(!importando);
                 setAlta(false);
@@ -534,7 +544,7 @@ export default function GestorProductos({ catalogo }: { catalogo: ModeloCaja[] }
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-linea-fuerte text-left">
-                <th className="w-10 px-3 py-2.5">
+                <th className="w-10 px-2 py-2.5 sm:px-3">
                   <input
                     type="checkbox"
                     className="h-4 w-4 accent-vino"
@@ -543,29 +553,35 @@ export default function GestorProductos({ catalogo }: { catalogo: ModeloCaja[] }
                     aria-label="Elegir todos los de la lista"
                   />
                 </th>
-                <th className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wider text-humo">
+                <th className="px-2 py-2.5 text-xs font-semibold uppercase tracking-wider text-humo sm:px-3">
                   Codigo
                 </th>
-                <th className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wider text-humo">
+                <th className="px-2 py-2.5 text-xs font-semibold uppercase tracking-wider text-humo sm:px-3">
                   Prenda
                 </th>
-                <th className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wider text-humo">
+                {/* En telefono estas dos columnas son las que sobran: la
+                    categoria y las piezas son de referencia, y sin ellas el
+                    codigo, la prenda y el precio caben sin deslizar. */}
+                <th className="hidden px-3 py-2.5 text-xs font-semibold uppercase tracking-wider text-humo md:table-cell">
                   Categoria
                 </th>
-                <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-humo">
+                <th className="hidden px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-humo sm:table-cell">
                   En tienda
                 </th>
-                <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-humo">
+                <th className="px-2 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-humo sm:px-3">
                   Precio
                 </th>
-                <th className="px-3 py-2.5" />
+                {/* En telefono parado no cabe; girandolo aparece. Poner
+                    precios, que es lo que se hace desde el celular, no la
+                    necesita. */}
+                <th className="hidden px-2 py-2.5 sm:table-cell sm:px-3" />
               </tr>
             </thead>
             <tbody>
               {visibles.map((modelo, indice) => (
                 <Fragment key={modelo.id}>
                   <tr className="border-b border-linea last:border-b-0">
-                    <td className="px-3 py-2">
+                    <td className="px-2 py-2 sm:px-3">
                       <input
                         type="checkbox"
                         className="h-4 w-4 accent-vino"
@@ -574,18 +590,22 @@ export default function GestorProductos({ catalogo }: { catalogo: ModeloCaja[] }
                         aria-label={`Elegir ${modelo.codigo}`}
                       />
                     </td>
-                    <td className="codigo whitespace-nowrap px-3 py-2">{modelo.codigo}</td>
-                    <td className="px-3 py-2">{modelo.descripcion || "Sin descripcion"}</td>
-                    <td className="px-3 py-2 text-humo">{modelo.categoria || "-"}</td>
+                    <td className="codigo whitespace-nowrap px-2 py-2 sm:px-3">{modelo.codigo}</td>
+                    <td className="px-2 py-2 sm:px-3">{modelo.descripcion || "Sin descripcion"}</td>
+                    <td className="hidden px-3 py-2 text-humo md:table-cell">{modelo.categoria || "-"}</td>
                     <td
-                      className={`cifra px-3 py-2 text-right ${modelo.en_tienda > 0 ? "" : "text-humo"}`}
+                      className={`cifra hidden px-3 py-2 text-right sm:table-cell ${modelo.en_tienda > 0 ? "" : "text-humo"}`}
                     >
                       {modelo.en_tienda}
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="px-2 py-2 sm:px-3">
                       <div className="flex items-center justify-end gap-2">
+                        {/* En telefono la insignia sobra: el campo vacio ya
+                            dice "sin precio" y el ancho esta contado. */}
                         {modelo.precio <= 0 && !comoSeVe(modelo, borradores[modelo.id]).trim() ? (
-                          <Insignia tono="aviso">Falta</Insignia>
+                          <span className="hidden sm:inline-flex">
+                            <Insignia tono="aviso">Falta</Insignia>
+                          </span>
                         ) : null}
                         {recienGuardado === modelo.id ? (
                           <span className="text-verde">
@@ -596,7 +616,7 @@ export default function GestorProductos({ catalogo }: { catalogo: ModeloCaja[] }
                           ref={(el) => {
                             camposPrecio.current[indice] = el;
                           }}
-                          className="campo cifra w-28 py-1.5 text-right"
+                          className="campo cifra w-20 py-1.5 text-right sm:w-28"
                           inputMode="decimal"
                           value={comoSeVe(modelo, borradores[modelo.id])}
                           onChange={(e) =>
@@ -611,9 +631,9 @@ export default function GestorProductos({ catalogo }: { catalogo: ModeloCaja[] }
                         />
                       </div>
                     </td>
-                    <td className="px-3 py-2 text-right">
+                    <td className="hidden px-2 py-2 text-right sm:table-cell sm:px-3">
                       <Boton
-                        className="px-3 text-xs"
+                        className="px-2 text-xs sm:px-3"
                         onClick={() => {
                           const abierto = editando === modelo.id;
                           setEditando(abierto ? null : modelo.id);

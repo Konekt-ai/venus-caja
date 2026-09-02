@@ -187,6 +187,15 @@ input[type="number"].sin-flechas {
   background: linear-gradient(90deg, var(--color-oro) 0%, var(--color-linea) 45%, transparent 100%);
 }
 
+/* El menu en telefono se desliza de lado; una barra de scroll visible
+   nomas ensuciaria una franja tan angosta. Se sigue deslizando igual. */
+.sin-barra {
+  scrollbar-width: none;
+}
+.sin-barra::-webkit-scrollbar {
+  display: none;
+}
+
 /* ---------- Impresion ---------- */
 
 @media print {
