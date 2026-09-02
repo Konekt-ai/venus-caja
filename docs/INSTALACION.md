@@ -105,22 +105,54 @@ misma red. Falta que entre la tienda, que esta en otro lado.
 
 ---
 
-## 3. Que la tienda entre por internet (Cloudflare Tunnel)
+## 3. Que la tienda entre por internet (el tunel)
 
 La tienda no esta en la misma red que la bodega, asi que no puede entrar por
 la direccion `192.168.x.x`. La solucion es un **tunel**: un programita en la
-computadora de la bodega que se conecta a Cloudflare y publica la caja en una
-direccion de internet.
+computadora de la bodega que se conecta hacia afuera y publica la caja en una
+direccion de internet con https. **No hay que abrir puertos en el modem** ni
+pedirle nada al proveedor: el tunel sale de adentro hacia afuera, como cuando
+abres una pagina.
 
-Es **gratis**, y lo mejor: **no hay que abrir puertos en el modem** ni pedirle
-nada al proveedor de internet. El tunel sale de adentro hacia afuera, como
-cuando abres una pagina.
+Hay dos maneras. La que esta funcionando hoy es **Tailscale Funnel**, que no
+necesita comprar nada. La de **Cloudflare** da una direccion mas bonita y un
+candado extra, pero necesita un dominio propio; queda documentada para cuando
+se quiera.
 
-Lo unico que se necesita es un **dominio** (algo como `venusboutique.com`)
-metido en Cloudflare. Si no hay, se compra uno; los hay de menos de 200 pesos
-al ano.
+### Sin comprar nada: Tailscale Funnel (la ruta instalada)
 
-### Paso a paso
+La computadora de la bodega ya tiene Tailscale (es por donde entra el
+soporte). Su funcion **Funnel** publica la caja en una direccion https
+propia de Tailscale, gratis:
+
+**1.** En la bodega, en una terminal, corre:
+
+```
+tailscale funnel --bg 3001
+```
+
+**2.** Si es la primera vez, el mismo comando avisa si falta prender algo en
+la cuenta de Tailscale (los certificados https o el permiso de Funnel) y da
+la liga exacta para hacerlo: se entra con la cuenta de Tailscale de la
+bodega y es un clic.
+
+**3.** Al terminar imprime la direccion publica, algo como
+`https://desktop-nhvf5r4.tu-red.ts.net`. Esa es la que se configura en la
+computadora de la tienda (seccion 4, donde diga `caja.tudominio.com` va
+esta). La configuracion queda guardada y aguanta reinicios. Para volver a
+ver la direccion: `tailscale funnel status`. Para apagar el tunel:
+`tailscale funnel --https=443 off`.
+
+> La direccion sale del nombre de la maquina en Tailscale. Si algun dia
+> renombran `desktop-nhvf5r4` en el panel de Tailscale, la direccion cambia
+> y hay que actualizar el acceso directo de la tienda.
+
+### Con dominio propio: Cloudflare Tunnel
+
+Se necesita un **dominio** (algo como `venusboutique.com`) metido en
+Cloudflare. Si no hay, se compra uno; los hay de menos de 200 pesos al ano.
+
+#### Paso a paso
 
 **1.** Haz una cuenta gratis en <https://dash.cloudflare.com> y agrega ahi tu
 dominio. Cloudflare te dice que cambies los "nameservers" donde compraste el
@@ -163,7 +195,7 @@ Guarda. En un minuto la caja ya se abre desde cualquier lado en
 **6.** Comprueba desde tu celular usando datos moviles, con el WiFi de la
 bodega apagado. Si abre, quedo.
 
-### Un candado extra (opcional pero recomendable)
+#### Un candado extra (opcional, solo en la ruta de Cloudflare)
 
 La caja ya pide PIN, pero si quieres que ni siquiera la pantalla de entrada
 se vea desde internet, en Zero Trust > **Access** > **Applications** puedes
@@ -328,8 +360,10 @@ Casi siempre es que apagaron la computadora de la bodega. Que alguien vaya a
 ver si esta prendida. Si esta prendida, revisa que exista la ventana negra de
 la caja; si no esta, dale doble clic a INICIAR.bat. Y si la caja SI abre en
 la bodega (`http://localhost:3001`) pero la tienda no entra, el caido es el
-tunel: revisa en la pagina de Cloudflare que el tunel diga **HEALTHY**, o en
-la bodega corre `sc query Cloudflared` en una terminal; si no esta corriendo,
+tunel. Con Tailscale Funnel: corre `tailscale funnel status` en la bodega y
+revisa que el icono de Tailscale este conectado; si no, reinicia la
+computadora. Con Cloudflare: revisa en su pagina que el tunel diga
+**HEALTHY**, o corre `sc query Cloudflared`; si no esta corriendo,
 `net start Cloudflared` o reinicia la computadora.
 
 **Abre la pagina pero dice que no encuentra la base de datos.**

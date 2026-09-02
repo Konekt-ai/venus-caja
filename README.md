@@ -24,9 +24,10 @@ se cierra la ventana.
 
 La primera vez hay que instalarlo: clic derecho en **`INSTALAR.bat`** >
 Ejecutar como administrador, una sola vez, y el mismo archivo va explicando
-lo que hace. Para que la tienda entre por internet hay un segundo instalador,
-**`INSTALAR-TUNEL.bat`** (los pasos previos en Cloudflare vienen en
-`docs/INSTALACION.md`, seccion 3).
+lo que hace. Para que la tienda entre por internet hace falta el tunel
+(`docs/INSTALACION.md`, seccion 3): hoy es Tailscale Funnel, un solo comando;
+si algun dia hay dominio propio, esta **`INSTALAR-TUNEL.bat`** para el de
+Cloudflare.
 
 ---
 
@@ -174,10 +175,11 @@ se corrige ni se esconde, que es justo lo que sirve para revisarla despues.
   existe es Chrome 109 o Firefox ESR 115. Por eso el proyecto esta fijado en
   Next.js 15 y Tailwind 3: las versiones siguientes no corren en ese navegador.
   No actualizar esas dos sin leer `docs/INSTALACION.md`.
-- **La tienda entra por un tunel de Cloudflare** instalado como servicio de
-  Windows (se llama `Cloudflared`) en la computadora de la bodega, con
-  `INSTALAR-TUNEL.bat`. Si la tienda no entra pero la bodega si, ese servicio
-  es el sospechoso: `sc query Cloudflared`.
+- **La tienda entra por un tunel.** Hoy es Tailscale Funnel en la computadora
+  de la bodega: `tailscale funnel status` dice la direccion y si esta vivo.
+  La alternativa con dominio propio es Cloudflare Tunnel (`INSTALAR-TUNEL.bat`
+  lo deja como servicio de Windows llamado `Cloudflared`); los dos vienen en
+  `docs/INSTALACION.md`, seccion 3.
 
 ---
 
