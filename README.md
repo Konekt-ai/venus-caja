@@ -53,7 +53,8 @@ manda Enter.
 | `Enter` | agrega la prenda que esta arriba en la lista |
 | `Flechas` | elegir otra de la lista |
 | `F4` | cobrar |
-| `F6` | descuento (en por ciento o en pesos) |
+| `F6` | descuento a toda la venta (en por ciento o en pesos) |
+| `F7` | cambiar el precio de la ultima prenda |
 | `F8` | dejar la venta en espera y atender a otra clienta |
 | `F9` | retomar una venta que quedo en espera |
 | `F10` | cambiar de vendedora (entrega de turno) |
@@ -61,6 +62,20 @@ manda Enter.
 | `Esc` | cerrar lo que este abierto |
 
 Al cobrar en efectivo, `E` elige efectivo, `T` tarjeta y `R` transferencia.
+
+### Cambiar el precio en el mostrador
+
+En la venta, debajo de cada prenda esta su precio por pieza: al tocarlo (o con
+`F7` para la ultima) se escribe el precio nuevo y se elige:
+
+- **Solo en esta venta** (Enter): se cobra ese precio en este ticket y la
+  prenda sigue con su precio de siempre. En la bodega, en **Ventas**, esa
+  prenda aparece con el precio registrado al lado, para saber que se rebajo.
+- **Cambiar el precio de la prenda**: el precio nuevo se queda para todas las
+  ventas que siguen, y tambien lo ven la bodega y el tianguis.
+
+El descuento de `F6` es otra cosa: va sobre **toda** la venta. Para rebajar
+una sola prenda se le cambia el precio solo en esta venta.
 
 ### Entrar, cambiar de turno y salir
 

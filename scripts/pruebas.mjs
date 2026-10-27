@@ -81,6 +81,24 @@ for (const sufijo of ["", "-wal"]) {
   if (fs.existsSync(BASE_REAL + sufijo)) fs.copyFileSync(BASE_REAL + sufijo, BASE_COPIA + sufijo);
 }
 
+// Una caja instalada antes de que existiera precio_lista tiene la tabla de
+// renglones sin esa columna. Si la copia todavia no trae tablas de la caja,
+// se deja la de renglones como era antes: asi cada corrida comprueba que la
+// caja nueva sabe ponerse al dia sola sobre una base vieja.
+{
+  const { default: Database } = await import("better-sqlite3");
+  const vieja = new Database(BASE_COPIA);
+  const yaHay = vieja.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='caja_venta_lineas'").get();
+  if (!yaHay) {
+    vieja.exec(`CREATE TABLE caja_venta_lineas (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, venta_id TEXT NOT NULL, modelo_id INTEGER,
+      codigo TEXT NOT NULL DEFAULT '', descripcion TEXT NOT NULL DEFAULT '',
+      piezas INTEGER NOT NULL DEFAULT 1, precio INTEGER NOT NULL DEFAULT 0,
+      importe INTEGER NOT NULL DEFAULT 0, sin_respaldo INTEGER NOT NULL DEFAULT 0)`);
+  }
+  vieja.close();
+}
+
 process.env.VENUS_DB = BASE_COPIA;
 process.env.VENUS_CAJA = "C1";
 
@@ -769,6 +787,56 @@ const relectura = catalogoParaCaja();
 const modeloD = modeloDelCatalogo(relectura, D.id);
 iguales("el precio que bodega guardo sale en la relectura", modeloD.precio, 77700);
 iguales("la descripcion corregida sale en la relectura", modeloD.descripcion, "VESTIDO CORREGIDO EN BODEGA");
+
+// =======================================================================
+seccion("13. Precio cambiado en el mostrador");
+// =======================================================================
+comprobar(
+  "una base de antes recibe la columna del precio registrado",
+  db.prepare("PRAGMA table_info(caja_venta_lineas)").all().some((c) => c.name === "precio_lista")
+);
+
+const precioDeA = db.prepare("SELECT precio FROM caja_precios WHERE modelo_id = ?").get(A.id)?.precio ?? null;
+const regateada = venta({
+  id: "prueba-regateo",
+  lineas: [
+    { ...linea(A, 1, 55000), precio_lista: 65000 },
+    { ...linea(B, 1, 45000), precio_lista: 45000 },
+    { ...linea(C, 1, 39900), precio_lista: "raro" },
+  ],
+  forma_pago: "tarjeta",
+});
+const rRegateo = registrarVenta(regateada);
+comprobar("la venta con un precio cambiado se cobra", rRegateo.ok === true, rRegateo.ok ? "" : rRegateo.error);
+iguales("se cobra el precio cambiado, no el registrado", rRegateo.ok && rRegateo.datos.total, 55000 + 45000 + 39900);
+iguales(
+  "cada renglon guarda el precio registrado que tenia en pantalla",
+  db
+    .prepare("SELECT precio, precio_lista FROM caja_venta_lineas WHERE venta_id = ? ORDER BY id")
+    .all("prueba-regateo")
+    .map((r) => [r.precio, r.precio_lista]),
+  [
+    [55000, 65000],
+    [45000, 45000],
+    [39900, null],
+  ]
+);
+iguales(
+  "cambiar el precio solo en la venta no toca el precio de la prenda",
+  db.prepare("SELECT precio FROM caja_precios WHERE modelo_id = ?").get(A.id)?.precio ?? null,
+  precioDeA
+);
+
+const ventaVieja = venta({ id: "prueba-sin-precio-lista", lineas: [linea(B, 1, 45000)], forma_pago: "tarjeta" });
+const rVieja = registrarVenta(ventaVieja);
+comprobar("una venta en espera de antes, sin precio registrado, se cobra igual", rVieja.ok === true);
+
+const { armarTicketHtml } = await import(pathToFileURL(path.join(RAIZ, "src", "lib", "ticket.ts")).href);
+const html = armarTicketHtml(obtenerVenta("prueba-regateo"));
+comprobar(
+  "el ticket dice Powered by Konekt antes que el nombre de la tienda",
+  html.includes("Powered by") && html.indexOf("Konekt") < html.indexOf("ticket-negocio")
+);
 
 // --- Recoger -----------------------------------------------------------
 db.close();

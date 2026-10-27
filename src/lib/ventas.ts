@@ -216,8 +216,8 @@ export function registrarVenta(venta: VentaParaGuardar): Resultado<VentaGuardada
 
       const insertarLinea = db.prepare(
         `INSERT INTO caja_venta_lineas
-           (venta_id, modelo_id, codigo, descripcion, piezas, precio, importe, sin_respaldo)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+           (venta_id, modelo_id, codigo, descripcion, piezas, precio, importe, sin_respaldo, precio_lista)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       );
       const bajarTienda = db.prepare(
         `UPDATE modelos SET en_tienda = en_tienda - ?, actualizado_en = datetime('now','localtime') WHERE id = ?`
@@ -265,7 +265,12 @@ export function registrarVenta(venta: VentaParaGuardar): Resultado<VentaGuardada
           linea.piezas,
           linea.precio,
           linea.precio * linea.piezas - (descuentos[i] ?? 0),
-          faltan > 0 ? 1 : 0
+          faltan > 0 ? 1 : 0,
+          // Es el precio que la vendedora tenia en pantalla, no el de la base
+          // al subir: una venta sin internet se sube despues, y para entonces
+          // el precio registrado pudo haber cambiado. Solo informa; si viene
+          // raro se guarda como que no se sabe.
+          Number.isInteger(linea.precio_lista) && (linea.precio_lista ?? -1) >= 0 ? linea.precio_lista : null
         );
 
         // Solo baja lo que hay en la tienda. La existencia de bodega no se

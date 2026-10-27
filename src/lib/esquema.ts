@@ -105,7 +105,9 @@ CREATE INDEX IF NOT EXISTS idx_caja_ventas_vend   ON caja_ventas(vendedora_id, f
 
 -- El precio y la descripcion se copian a la linea a proposito: si manana
 -- sube el precio del vestido, el ticket de ayer debe seguir diciendo lo
--- que de verdad se cobro.
+-- que de verdad se cobro. 'precio_lista' es el precio registrado cuando se
+-- cobro: si es distinto de 'precio', la vendedora lo cambio para esa venta.
+-- Las bases de antes no la tienen: la agrega columnasNuevas() en db.ts.
 CREATE TABLE IF NOT EXISTS caja_venta_lineas (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   venta_id     TEXT    NOT NULL REFERENCES caja_ventas(id) ON DELETE CASCADE,
@@ -115,7 +117,8 @@ CREATE TABLE IF NOT EXISTS caja_venta_lineas (
   piezas       INTEGER NOT NULL DEFAULT 1,
   precio       INTEGER NOT NULL DEFAULT 0,
   importe      INTEGER NOT NULL DEFAULT 0,
-  sin_respaldo INTEGER NOT NULL DEFAULT 0
+  sin_respaldo INTEGER NOT NULL DEFAULT 0,
+  precio_lista INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_caja_lineas_venta  ON caja_venta_lineas(venta_id);
 CREATE INDEX IF NOT EXISTS idx_caja_lineas_modelo ON caja_venta_lineas(modelo_id);

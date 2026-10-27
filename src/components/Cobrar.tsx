@@ -82,6 +82,8 @@ export default function Cobrar({ catalogoInicial, vendedora, caja, negocio, ulti
   const [descuentoValor, setDescuentoValor] = useState(0);
   const [pagando, setPagando] = useState(false);
   const [pidiendoPrecio, setPidiendoPrecio] = useState<{ modelo: ModeloCaja; cantidad: number } | null>(null);
+  // El renglon de la venta al que se le esta cambiando el precio.
+  const [cambiandoPrecio, setCambiandoPrecio] = useState<number | null>(null);
   const [pidiendoDescuento, setPidiendoDescuento] = useState(false);
   const [espera, setEspera] = useState<VentaEnEspera[]>([]);
   const [verEspera, setVerEspera] = useState(false);
@@ -192,6 +194,7 @@ export default function Cobrar({ catalogoInicial, vendedora, caja, negocio, ulti
       lineas.length > 0 ||
       pagando ||
       pidiendoPrecio !== null ||
+      cambiandoPrecio !== null ||
       pidiendoDescuento ||
       verEspera ||
       menuVendedora ||
@@ -201,7 +204,7 @@ export default function Cobrar({ catalogoInicial, vendedora, caja, negocio, ulti
     catalogoNuevo.current = null;
     setCatalogo(nuevo.catalogo);
     ajustarFolioLocal(nuevo.ultimo_folio);
-  }, [descargas, lineas.length, pagando, pidiendoPrecio, pidiendoDescuento, verEspera, menuVendedora, texto, pendientes]);
+  }, [descargas, lineas.length, pagando, pidiendoPrecio, cambiandoPrecio, pidiendoDescuento, verEspera, menuVendedora, texto, pendientes]);
 
   useEffect(() => {
     const volvio = () => {
@@ -267,6 +270,7 @@ export default function Cobrar({ catalogoInicial, vendedora, caja, negocio, ulti
             descripcion: modelo.descripcion,
             piezas: cantidad,
             precio: modelo.precio,
+            precio_lista: modelo.precio,
           },
         ]);
       });
@@ -427,28 +431,62 @@ export default function Cobrar({ catalogoInicial, vendedora, caja, negocio, ulti
     [caja, ultimoFolio, total, vendedora, lineas, descuentoTipo, descuentoValor, subtotal, descuento, piezas, limpiar, sincronizar]
   );
 
+  // --- Precio registrado de una prenda ------------------------------------
+  // Cambia en la copia de la pantalla al momento y se manda a la base, que es
+  // la misma de bodega: alla tambien queda el precio nuevo.
+  const guardarPrecioGeneral = useCallback(async (modeloId: number, precio: number) => {
+    setCatalogo((antes) => antes.map((m) => (m.id === modeloId ? { ...m, precio } : m)));
+    try {
+      const respuesta = await fetch("/api/precio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modelo_id: modeloId, precio }),
+      });
+      if (!respuesta.ok) throw new Error("no se guardo");
+    } catch {
+      setAviso({
+        tipo: "info",
+        texto:
+          "El precio se uso en esta venta, pero no se pudo guardar para las siguientes. Vuelve a ponerlo cuando haya conexion.",
+      });
+    }
+  }, []);
+
   // --- Guardar un precio que faltaba --------------------------------------
   const ponerPrecio = useCallback(
     async (modelo: ModeloCaja, cantidad: number, precio: number) => {
-      const conPrecio = { ...modelo, precio };
-      setCatalogo((antes) => antes.map((m) => (m.id === modelo.id ? conPrecio : m)));
       setPidiendoPrecio(null);
-      agregar(conPrecio, cantidad);
+      agregar({ ...modelo, precio }, cantidad);
+      await guardarPrecioGeneral(modelo.id, precio);
+    },
+    [agregar, guardarPrecioGeneral]
+  );
 
-      try {
-        await fetch("/api/precio", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ modelo_id: modelo.id, precio }),
-        });
-      } catch {
-        setAviso({
-          tipo: "info",
-          texto: "El precio se uso en esta venta, pero no se pudo guardar todavia: no hay conexion.",
-        });
+  // --- Cambiar el precio de un renglon -------------------------------------
+  // "Solo esta venta" no toca el catalogo: la proxima clienta paga el precio
+  // de siempre. "Para siempre" cambia el precio registrado, que es el que
+  // ven la bodega y el tianguis.
+  const cambiarPrecio = useCallback(
+    (indice: number, precio: number, paraSiempre: boolean) => {
+      const linea = lineas[indice];
+      setCambiandoPrecio(null);
+      enfocarBuscador();
+      if (!linea) return;
+
+      setLineas((antes) =>
+        antes.map((l, i) =>
+          i === indice ? { ...l, precio, ...(paraSiempre ? { precio_lista: precio } : {}) } : l
+        )
+      );
+
+      if (paraSiempre) {
+        void guardarPrecioGeneral(linea.modelo_id, precio);
+        setAviso({ tipo: "ok", texto: `${linea.codigo} queda en ${pesos(precio)} de aqui en adelante.` });
+      } else {
+        setAviso({ tipo: "ok", texto: `${linea.codigo} va en ${pesos(precio)} solo en esta venta.` });
       }
     },
-    [agregar]
+    [lineas, enfocarBuscador, guardarPrecioGeneral]
   );
 
   // --- Teclado ------------------------------------------------------------
@@ -456,11 +494,22 @@ export default function Cobrar({ catalogoInicial, vendedora, caja, negocio, ulti
     const alTeclear = (e: KeyboardEvent) => {
       // Con una ventana abierta encima, ella manda.
       const hayVentana =
-        pagando || pidiendoPrecio !== null || pidiendoDescuento || verEspera || menuVendedora;
+        pagando ||
+        pidiendoPrecio !== null ||
+        cambiandoPrecio !== null ||
+        pidiendoDescuento ||
+        verEspera ||
+        menuVendedora;
 
       if (e.key === "F4") {
         e.preventDefault();
         if (!hayVentana) abrirCobro();
+        return;
+      }
+      if (e.key === "F7") {
+        // La ultima prenda es casi siempre la que la clienta esta regateando.
+        e.preventDefault();
+        if (!hayVentana && lineas.length) setCambiandoPrecio(lineas.length - 1);
         return;
       }
       if (e.key === "F6") {
@@ -488,6 +537,7 @@ export default function Cobrar({ catalogoInicial, vendedora, caja, negocio, ulti
         if (hayVentana) {
           setPagando(false);
           setPidiendoPrecio(null);
+          setCambiandoPrecio(null);
           setPidiendoDescuento(false);
           setVerEspera(false);
           setMenuVendedora(false);
@@ -528,6 +578,7 @@ export default function Cobrar({ catalogoInicial, vendedora, caja, negocio, ulti
   }, [
     pagando,
     pidiendoPrecio,
+    cambiandoPrecio,
     pidiendoDescuento,
     verEspera,
     abrirCobro,
@@ -702,6 +753,19 @@ export default function Cobrar({ catalogoInicial, vendedora, caja, negocio, ulti
                     <div className="min-w-0 flex-1">
                       <p className="codigo text-sm">{linea.codigo}</p>
                       <p className="truncate text-xs text-humo">{linea.descripcion}</p>
+                      {/* El precio es el boton: es donde se mira cuando la
+                          clienta pregunta "y si me lo deja en...". */}
+                      <button
+                        type="button"
+                        onClick={() => setCambiandoPrecio(i)}
+                        className="mt-0.5 text-xs font-semibold text-vino underline decoration-dotted underline-offset-2 hover:text-vino-oscuro"
+                        title="Cambiar el precio (F7 cambia el de la ultima prenda)"
+                      >
+                        {pesos(linea.precio)} c/u
+                      </button>
+                      {linea.precio_lista !== undefined && linea.precio_lista !== linea.precio ? (
+                        <span className="ml-2 text-xs text-humo line-through">{pesos(linea.precio_lista)}</span>
+                      ) : null}
                     </div>
                     <div className="flex items-center gap-1">
                       <button
@@ -801,6 +865,18 @@ export default function Cobrar({ catalogoInicial, vendedora, caja, negocio, ulti
             enfocarBuscador();
           }}
           onGuardar={(precio) => void ponerPrecio(pidiendoPrecio.modelo, pidiendoPrecio.cantidad, precio)}
+        />
+      ) : null}
+
+      {cambiandoPrecio !== null && lineas[cambiandoPrecio] ? (
+        <VentanaCambiarPrecio
+          linea={lineas[cambiandoPrecio]}
+          registrado={catalogo.find((m) => m.id === lineas[cambiandoPrecio]?.modelo_id)?.precio ?? 0}
+          onCerrar={() => {
+            setCambiandoPrecio(null);
+            enfocarBuscador();
+          }}
+          onCambiar={(precio, paraSiempre) => cambiarPrecio(cambiandoPrecio, precio, paraSiempre)}
         />
       ) : null}
 
@@ -1052,6 +1128,93 @@ function VentanaPrecio({
         >
           Guardar y agregar
         </Boton>
+      </div>
+    </Ventana>
+  );
+}
+
+/**
+ * Cambiar el precio de una prenda que ya esta en la venta.
+ *
+ * Enter es "solo esta venta" a proposito: es lo que pasa casi siempre (la
+ * clienta regatea) y equivocarse ahi solo afecta un ticket. Cambiar el
+ * precio de la prenda para siempre lleva su propio boton, que hay que
+ * apretar a conciencia.
+ */
+function VentanaCambiarPrecio({
+  linea,
+  registrado,
+  onCerrar,
+  onCambiar,
+}: {
+  linea: LineaVenta;
+  registrado: number;
+  onCerrar: () => void;
+  onCambiar: (precio: number, paraSiempre: boolean) => void;
+}) {
+  const [valor, setValor] = useState("");
+  const campo = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    window.setTimeout(() => campo.current?.focus(), 20);
+  }, []);
+
+  const precio = aCentavos(valor) ?? 0;
+  const valido = precio > 0;
+
+  return (
+    <Ventana titulo={`Precio de ${linea.codigo}`} onCerrar={onCerrar}>
+      <p className="mb-1 text-sm text-humo">{linea.descripcion}</p>
+      <p className="mb-4 text-sm text-humo">
+        Precio registrado: <strong className="text-tinta">{registrado > 0 ? pesos(registrado) : "sin precio"}</strong>
+        {linea.precio !== registrado ? (
+          <>
+            {" "}
+            · En esta venta: <strong className="text-tinta">{pesos(linea.precio)}</strong>
+          </>
+        ) : null}
+      </p>
+      <label className="etiqueta" htmlFor="precio-nuevo">
+        Precio nuevo por pieza
+      </label>
+      <input
+        id="precio-nuevo"
+        ref={campo}
+        className="campo sin-flechas text-2xl"
+        inputMode="decimal"
+        value={valor}
+        onChange={(e) => setValor(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && valido) onCambiar(precio, false);
+        }}
+        placeholder={(linea.precio / 100).toFixed(2)}
+        autoComplete="off"
+      />
+      {valido && linea.piezas > 1 ? (
+        <p className="mt-2 text-sm text-humo">
+          {linea.piezas} piezas: <strong className="text-tinta">{pesos(precio * linea.piezas)}</strong>
+        </p>
+      ) : null}
+
+      <div className="mt-5 grid gap-2">
+        <Boton variante="primario" onClick={() => valido && onCambiar(precio, false)} disabled={!valido}>
+          Solo en esta venta (Enter)
+        </Boton>
+        <Boton onClick={() => valido && onCambiar(precio, true)} disabled={!valido}>
+          Cambiar el precio de la prenda
+        </Boton>
+        <p className="text-xs leading-relaxed text-humo">
+          Cambiar el precio de la prenda lo deja para todas las ventas que siguen, y tambien en la bodega y el
+          tianguis.
+        </p>
+        {registrado > 0 && linea.precio !== registrado ? (
+          <button
+            type="button"
+            onClick={() => onCambiar(registrado, false)}
+            className="text-left text-sm font-semibold text-humo underline underline-offset-2 hover:text-tinta"
+          >
+            Regresar al precio registrado ({pesos(registrado)})
+          </button>
+        ) : null}
       </div>
     </Ventana>
   );

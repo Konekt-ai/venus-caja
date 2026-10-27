@@ -71,8 +71,25 @@ function abrir(): Database.Database {
   // Solo las tablas de la caja. El esquema de la bodega no se toca: lo crea
   // ella al arrancar y no es asunto de este programa.
   db.exec(ESQUEMA_CAJA);
+  columnasNuevas(db);
 
   return db;
+}
+
+/**
+ * Columnas que se agregaron despues de instalar.
+ *
+ * CREATE TABLE IF NOT EXISTS no toca una tabla que ya existe, asi que a las
+ * bases de antes hay que agregarles la columna a mano. Solo se agrega lo que
+ * falta y nunca se quita nada: las ventas que ya estaban se quedan igual.
+ */
+function columnasNuevas(db: Database.Database): void {
+  const tiene = (tabla: string, columna: string) =>
+    (db.prepare(`PRAGMA table_info(${tabla})`).all() as { name: string }[]).some((c) => c.name === columna);
+
+  if (!tiene("caja_venta_lineas", "precio_lista")) {
+    db.exec("ALTER TABLE caja_venta_lineas ADD COLUMN precio_lista INTEGER");
+  }
 }
 
 export function getDb(): Database.Database {

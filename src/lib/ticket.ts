@@ -173,6 +173,20 @@ export const CSS_TICKET = `/* ==================================================
   margin-bottom: 3mm;
 }
 
+/* La firma de quien hizo el sistema: arriba de todo y chica, para que no
+   le quite lugar al nombre de la tienda. Negro puro como todo lo demas: un
+   gris no sale en la termica. */
+.ticket-firma {
+  margin-bottom: 2mm;
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  text-align: center;
+}
+
+.ticket-firma strong {
+  font-weight: 700;
+}
+
 .ticket-negocio {
   font-family: Georgia, "Times New Roman", serif;
   font-size: 1.5rem;
@@ -432,6 +446,7 @@ export function armarTicketHtml(datos: TicketVenta): string {
     .join("");
 
   return `<article class="ticket">
+  <p class="ticket-firma">Powered by <strong>Konekt</strong></p>
   <header class="ticket-encabezado">
     <p class="ticket-negocio">Venus</p>
     <p class="ticket-marca">Boutique</p>

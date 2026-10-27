@@ -28,7 +28,14 @@ export type LineaVenta = {
   codigo: string;
   descripcion: string;
   piezas: number;
+  /** Lo que se cobra por pieza en esta venta. */
   precio: number;
+  /**
+   * El precio registrado de la prenda cuando se agrego. Si es distinto de
+   * 'precio', la vendedora lo cambio solo para esta venta. Las ventas que
+   * se dejaron en espera antes de esto no lo traen.
+   */
+  precio_lista?: number;
 };
 
 export type TipoDescuento = "" | "porcentaje" | "pesos";
