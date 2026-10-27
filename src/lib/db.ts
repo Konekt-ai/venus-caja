@@ -90,6 +90,9 @@ function columnasNuevas(db: Database.Database): void {
   if (!tiene("caja_venta_lineas", "precio_lista")) {
     db.exec("ALTER TABLE caja_venta_lineas ADD COLUMN precio_lista INTEGER");
   }
+  if (!tiene("caja_ventas", "cobro")) {
+    db.exec("ALTER TABLE caja_ventas ADD COLUMN cobro TEXT NOT NULL DEFAULT ''");
+  }
 }
 
 export function getDb(): Database.Database {

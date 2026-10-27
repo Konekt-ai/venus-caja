@@ -40,6 +40,9 @@ export type LineaVenta = {
 
 export type TipoDescuento = "" | "porcentaje" | "pesos";
 
+/** Alguien que puede quedar como quien hizo la venta. Sale de 'personal'. */
+export type QuienVende = { id: number; nombre: string };
+
 /** Una venta lista para guardarse. Es lo que viaja del navegador al servidor. */
 export type VentaParaGuardar = {
   id: string;
@@ -49,7 +52,13 @@ export type VentaParaGuardar = {
    * ocupado, el servidor asigna el siguiente libre y lo devuelve.
    */
   folio?: string;
+  /** Quien hizo la venta: se elige al cobrar. */
   vendedora_id: number | null;
+  /**
+   * Con que cuenta se cobro (una vendedora o VENTAS). Puede no ser quien
+   * vendio: una atiende a la clienta y otra le cobra.
+   */
+  cobro?: string;
   lineas: LineaVenta[];
   descuento_tipo: TipoDescuento;
   descuento_valor: number;

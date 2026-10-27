@@ -1,16 +1,27 @@
 import "server-only";
 import crypto from "node:crypto";
 import { cookies } from "next/headers";
-import { getDb } from "./db";
+import { getDb, guardarAjuste, leerAjuste } from "./db";
 
 /**
  * Quien esta cobrando.
  *
  * La URL de la caja es publica (la tienda entra por internet), asi que hay
- * llave desde el primer dia. Cada vendedora entra con un PIN corto y la
- * venta queda firmada con su nombre sin tener que elegirlo de una lista en
- * cada cobro, que es justo el paso que nadie hace cuando hay prisa.
+ * llave desde el primer dia. Se entra con un PIN corto: el de una vendedora
+ * o el PIN compartido de la caja (la cuenta VENTAS), con el que entran
+ * todas. Quien VENDIO no sale de aqui: se elige al cobrar, porque en la
+ * tienda una atiende a la clienta y otra le cobra.
  */
+
+/**
+ * La cuenta compartida con la que entran todas.
+ *
+ * No es una persona: no vive en 'personal' (asi no aparece en ninguna lista
+ * de vendedoras, ni aqui ni en la bodega) y su PIN se guarda en caja_config.
+ * Lleva el id -1 porque el 0 ya es del duenio y los positivos son personas.
+ */
+export const ID_CUENTA_VENTAS = -1;
+export const NOMBRE_CUENTA_VENTAS = "VENTAS";
 
 const NOMBRE_COOKIE = "venus_caja";
 /** Doce horas: una jornada completa. Que no se cierre a media tarde. */
@@ -60,6 +71,35 @@ export function guardarPin(personalId: number, pin: string, rol = "vendedora"): 
     .run(personalId, hash, sal, rol);
 }
 
+/** Pone o cambia el PIN de la cuenta VENTAS. */
+export function guardarPinVentas(pin: string): void {
+  const sal = crypto.randomBytes(16).toString("base64");
+  guardarAjuste("pin_ventas_sal", sal);
+  guardarAjuste("pin_ventas_hash", derivarPin(pin, sal));
+}
+
+/** Quita el PIN de la cuenta VENTAS: con eso ya nadie entra con ella. */
+export function quitarPinVentas(): void {
+  guardarAjuste("pin_ventas_hash", "");
+  guardarAjuste("pin_ventas_sal", "");
+}
+
+export function hayPinVentas(): boolean {
+  return leerAjuste("pin_ventas_hash") !== "";
+}
+
+/** Compara en tiempo constante: el tiempo de respuesta no delata cuantos digitos iban bien. */
+function coincide(pin: string, sal: string, hash: string): boolean {
+  const intento = derivarPin(pin, sal);
+  return intento.length === hash.length && crypto.timingSafeEqual(Buffer.from(intento), Buffer.from(hash));
+}
+
+/** true si ese PIN es el de la cuenta VENTAS. */
+export function esPinVentas(pin: string): boolean {
+  const hash = leerAjuste("pin_ventas_hash");
+  return hash !== "" && coincide(pin, leerAjuste("pin_ventas_sal"), hash);
+}
+
 export type Entrada = { ok: true; sesion: Sesion } | { ok: false; error: string };
 
 /** Busca a quien le toca ese PIN. Nadie teclea su nombre: solo el PIN. */
@@ -77,13 +117,7 @@ export function verificarPin(pin: string): Entrada {
     .all() as { personal_id: number; pin_hash: string; pin_sal: string; rol: string; nombre: string }[];
 
   for (const fila of filas) {
-    const intento = derivarPin(limpio, fila.pin_sal);
-    // Comparacion de tiempo constante: sin esto, el tiempo de respuesta
-    // delata cuantos digitos del PIN iban bien.
-    const iguales =
-      intento.length === fila.pin_hash.length &&
-      crypto.timingSafeEqual(Buffer.from(intento), Buffer.from(fila.pin_hash));
-    if (iguales) {
+    if (coincide(limpio, fila.pin_sal, fila.pin_hash)) {
       return {
         ok: true,
         sesion: {
@@ -94,6 +128,18 @@ export function verificarPin(pin: string): Entrada {
         },
       };
     }
+  }
+
+  if (esPinVentas(limpio)) {
+    return {
+      ok: true,
+      sesion: {
+        id: ID_CUENTA_VENTAS,
+        nombre: NOMBRE_CUENTA_VENTAS,
+        rol: "vendedora",
+        vence: Date.now() + DURACION_HORAS * 3600 * 1000,
+      },
+    };
   }
 
   return { ok: false, error: "Ese PIN no es de nadie. Vuelve a intentar." };
@@ -162,6 +208,7 @@ export function pinDelDuenio(): string {
 }
 
 export function hayAlgunPin(): boolean {
+  if (hayPinVentas()) return true;
   const fila = getDb()
     .prepare(`SELECT COUNT(*) AS n FROM caja_vendedoras WHERE pin_hash <> '' AND activa = 1`)
     .get() as { n: number };

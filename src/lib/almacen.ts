@@ -1,6 +1,6 @@
 "use client";
 
-import type { LineaVenta, ModeloCaja, VentaParaGuardar } from "./tipos";
+import type { LineaVenta, ModeloCaja, QuienVende, VentaParaGuardar } from "./tipos";
 
 /**
  * Lo que la caja guarda en la propia computadora de la tienda.
@@ -16,6 +16,7 @@ const LLAVE_CATALOGO = "venus_caja_catalogo";
 const LLAVE_ESPERA = "venus_caja_espera";
 const LLAVE_FOLIO = "venus_caja_folio";
 const LLAVE_EN_CURSO = "venus_caja_en_curso";
+const LLAVE_VENDEDORAS = "venus_caja_vendedoras";
 
 function leer<T>(llave: string, siNoHay: T): T {
   try {
@@ -68,6 +69,15 @@ export function guardarCatalogo(catalogo: ModeloCaja[]): void {
 
 export function catalogoGuardado(): ModeloCaja[] {
   return leer<ModeloCaja[]>(LLAVE_CATALOGO, []);
+}
+
+/** La lista de quien vende, por la misma razon: sin ella no se podria cobrar sin internet. */
+export function guardarVendedoras(vendedoras: QuienVende[]): void {
+  escribir(LLAVE_VENDEDORAS, vendedoras);
+}
+
+export function vendedorasGuardadas(): QuienVende[] {
+  return leer<QuienVende[]>(LLAVE_VENDEDORAS, []);
 }
 
 // --- Folio ----------------------------------------------------------------

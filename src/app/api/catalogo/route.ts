@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { nombreCaja } from "@/lib/db";
-import { catalogoParaCaja, ultimoFolio } from "@/lib/consultas";
+import { catalogoParaCaja, quienesVenden, ultimoFolio } from "@/lib/consultas";
 import { sesionActual } from "@/lib/sesion";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +20,8 @@ export async function GET() {
       ok: true,
       catalogo: catalogoParaCaja(),
       ultimo_folio: ultimoFolio(nombreCaja()),
+      // Una vendedora que dan de alta a media jornada aparece al cobrar sin recargar.
+      vendedoras: quienesVenden(),
     });
   } catch {
     // La base no contesto (disco ocupado, OneDrive a medias). La caja sigue

@@ -46,6 +46,10 @@ const CARGADOR_TS =
       "        try { return await siguiente(especificador + extension, contexto); } catch {}",
       "      }",
       "    }",
+      // next/headers y parecidos: Next no declara 'exports' y Node pide el .js.
+      "    if (!relativo && !ultimo.includes('.')) {",
+      "      try { return await siguiente(especificador + '.js', contexto); } catch {}",
+      "    }",
       "    throw error;",
       "  }",
       "}",
@@ -95,6 +99,20 @@ for (const sufijo of ["", "-wal"]) {
       codigo TEXT NOT NULL DEFAULT '', descripcion TEXT NOT NULL DEFAULT '',
       piezas INTEGER NOT NULL DEFAULT 1, precio INTEGER NOT NULL DEFAULT 0,
       importe INTEGER NOT NULL DEFAULT 0, sin_respaldo INTEGER NOT NULL DEFAULT 0)`);
+  }
+  // Igual con las ventas, que antes no guardaban quien cobro.
+  const yaHayVentas = vieja.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='caja_ventas'").get();
+  if (!yaHayVentas) {
+    vieja.exec(`CREATE TABLE caja_ventas (
+      id TEXT PRIMARY KEY, folio TEXT NOT NULL UNIQUE, caja TEXT NOT NULL DEFAULT 'C1',
+      fecha TEXT NOT NULL DEFAULT (datetime('now','localtime')), vendedora_id INTEGER,
+      vendedora TEXT NOT NULL DEFAULT '', subtotal INTEGER NOT NULL DEFAULT 0,
+      descuento INTEGER NOT NULL DEFAULT 0, descuento_tipo TEXT NOT NULL DEFAULT '',
+      descuento_valor INTEGER NOT NULL DEFAULT 0, total INTEGER NOT NULL DEFAULT 0,
+      piezas INTEGER NOT NULL DEFAULT 0, estado TEXT NOT NULL DEFAULT 'cobrada',
+      motivo_cancelacion TEXT NOT NULL DEFAULT '', cancelada_por TEXT NOT NULL DEFAULT '',
+      cancelada_en TEXT, corte_id INTEGER, nota TEXT NOT NULL DEFAULT '',
+      guardada_en TEXT NOT NULL DEFAULT (datetime('now','localtime')))`);
   }
   vieja.close();
 }
@@ -834,9 +852,70 @@ comprobar("una venta en espera de antes, sin precio registrado, se cobra igual",
 const { armarTicketHtml } = await import(pathToFileURL(path.join(RAIZ, "src", "lib", "ticket.ts")).href);
 const html = armarTicketHtml(obtenerVenta("prueba-regateo"));
 comprobar(
-  "el ticket dice Powered by Konekt antes que el nombre de la tienda",
-  html.includes("Powered by") && html.indexOf("Konekt") < html.indexOf("ticket-negocio")
+  "el ticket dice Hecho por con el logo, antes que el nombre de la tienda",
+  html.includes("Hecho por") &&
+    html.indexOf("data:image/png;base64,") > 0 &&
+    html.indexOf("data:image/png;base64,") < html.indexOf("ticket-negocio")
 );
+
+// =======================================================================
+seccion("14. Una vende y otra cobra: la cuenta VENTAS");
+// =======================================================================
+const sesionLib = await import(pathToFileURL(path.join(RAIZ, "src", "lib", "sesion.ts")).href);
+const { quienesVenden } = await import(pathToFileURL(path.join(RAIZ, "src", "lib", "consultas.ts")).href);
+
+comprobar(
+  "una base de antes recibe la columna de quien cobro",
+  db.prepare("PRAGMA table_info(caja_ventas)").all().some((c) => c.name === "cobro")
+);
+
+comprobar("sin PIN de VENTAS, nadie entra con ese PIN", sesionLib.verificarPin("4826").ok === false);
+sesionLib.guardarPinVentas("4826");
+const entrada = sesionLib.verificarPin("4826");
+comprobar(
+  "con el PIN de VENTAS se entra como VENTAS",
+  entrada.ok && entrada.sesion.nombre === "VENTAS" && entrada.sesion.id === sesionLib.ID_CUENTA_VENTAS,
+  JSON.stringify(entrada)
+);
+comprobar("VENTAS no es duenio: no ve reportes ni precios", entrada.ok && !sesionLib.esDuenio(entrada.sesion));
+comprobar(
+  "VENTAS no aparece en la lista de quien vende",
+  !quienesVenden().some((v) => v.nombre === "VENTAS" || v.id === sesionLib.ID_CUENTA_VENTAS)
+);
+comprobar("ni en el personal de la bodega", !db.prepare("SELECT 1 FROM personal WHERE nombre = 'VENTAS'").get());
+
+// Una vendedora sin PIN propio tambien puede quedar como quien vendio.
+const sinPin = Number(
+  db.prepare("INSERT INTO personal (nombre, puesto) VALUES ('ROSA SIN PIN', 'vendedora')").run().lastInsertRowid
+);
+comprobar("una vendedora sin PIN aparece para elegirla al cobrar", quienesVenden().some((v) => v.id === sinPin));
+
+const compartida = registrarVenta({
+  ...venta({ id: "prueba-venta-compartida", lineas: [linea(B, 1, 45000)], forma_pago: "tarjeta" }),
+  vendedora_id: sinPin,
+  cobro: "VENTAS",
+});
+comprobar("se cobra con la vendedora elegida", compartida.ok === true, compartida.ok ? "" : compartida.error);
+iguales(
+  "la venta queda a nombre de quien vendio y dice quien cobro",
+  db.prepare("SELECT vendedora_id, vendedora, cobro FROM caja_ventas WHERE id = 'prueba-venta-compartida'").get(),
+  { vendedora_id: sinPin, vendedora: "ROSA SIN PIN", cobro: "VENTAS" }
+);
+iguales(
+  "el movimiento de la bodega lleva el nombre de quien vendio",
+  db
+    .prepare("SELECT persona FROM movimientos WHERE tipo = 'venta' AND nota LIKE ? ORDER BY id DESC LIMIT 1")
+    .get("%" + obtenerVenta("prueba-venta-compartida").venta.folio)?.persona,
+  "ROSA SIN PIN"
+);
+comprobar(
+  "sin decir quien vendio no se cobra",
+  registrarVenta({ ...venta({ id: "prueba-sin-quien", lineas: [linea(B, 1, 45000)], forma_pago: "tarjeta" }), vendedora_id: null })
+    .ok === false
+);
+
+sesionLib.quitarPinVentas();
+comprobar("al quitar el PIN de VENTAS ya nadie entra con el", sesionLib.verificarPin("4826").ok === false);
 
 // --- Recoger -----------------------------------------------------------
 db.close();

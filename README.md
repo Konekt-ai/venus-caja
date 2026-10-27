@@ -79,11 +79,28 @@ una sola prenda se le cambia el precio solo en esta venta.
 
 ### Entrar, cambiar de turno y salir
 
-Cada vendedora entra con su PIN en la pantalla de entrada, y la sesion dura
-doce horas: una jornada completa, para que no se cierre a media tarde.
+Lo normal es entrar con el **PIN de VENTAS**, que es uno solo para todas (el
+duenio lo pone en **Vendedoras**). VENTAS no es una persona: no aparece en la
+lista de vendedoras ni en la bodega. Tambien se puede dar un PIN propio a una
+vendedora. La sesion dura doce horas: una jornada completa, para que no se
+cierre a media tarde.
+
+### Quien hizo la venta
+
+Al cobrar (`F4`), arriba de la ventana se elige **quien hizo la venta**, porque
+muchas veces una atiende a la clienta y otra le cobra. Con el teclado: la
+primera letra del nombre y Enter, y el cursor pasa a "con cuanto paga". Sin
+elegirla no deja cobrar. Si se entro con el PIN propio de una vendedora, ya
+viene elegida ella, pero se puede cambiar.
+
+La venta queda a nombre de quien la hizo (en el ticket, en los reportes y en
+la bodega). En **Ventas del dia** se ve ademas con que cuenta se cobro.
+
+Para que alguien aparezca en la lista basta con darla de alta en
+**Vendedoras** (o en Personal, en la bodega); no necesita PIN.
 
 Para entregar el turno se aprieta `F10` o se toca el nombre de arriba a la
-derecha, y la otra vendedora entra con su PIN. **La venta que este a medias no
+derecha, y la otra entra con su PIN. **La venta que este a medias no
 se pierde**: se queda guardada en la computadora y reaparece en cuanto la
 siguiente entra. Lo mismo pasa si alguien recarga la pagina sin querer o si se
 va la luz un momento.
@@ -153,7 +170,8 @@ alcanza.
 - **Reportes** — ventas por dia, semana y mes; lo mas vendido por piezas y por
   dinero; como va cada vendedora; y las ventas por forma de pago. Todo se puede
   bajar a Excel.
-- **Vendedoras** — quien puede cobrar y con que PIN.
+- **Vendedoras** — quien puede quedar como quien hizo la venta, el PIN de
+  VENTAS y los PIN propios.
 - **Etiquetas** — imprimir los codigos de barras de la propia tienda.
 - **Ajustes** — respaldo, el candado del inventario y la actualizacion.
 

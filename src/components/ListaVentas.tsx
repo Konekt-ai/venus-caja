@@ -74,7 +74,13 @@ export default function ListaVentas({ ventas, puedeCancelar }: { ventas: VentaRe
                     ) : null}
                   </td>
                   <td className="px-4 py-3 text-humo">{venta.fecha.slice(11, 16)}</td>
-                  <td className="px-4 py-3">{venta.vendedora}</td>
+                  <td className="px-4 py-3">
+                    {venta.vendedora}
+                    {/* Solo cuando cobro alguien distinto de quien vendio. */}
+                    {venta.cobro && venta.cobro !== venta.vendedora ? (
+                      <span className="block text-xs text-humo">cobro {venta.cobro}</span>
+                    ) : null}
+                  </td>
                   <td className="px-4 py-3 text-humo">
                     {venta.formas
                       .split(", ")

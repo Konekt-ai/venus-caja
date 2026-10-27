@@ -25,9 +25,11 @@ export async function POST(peticion: Request) {
     return NextResponse.json({ ok: false, error: "La venta llego incompleta." }, { status: 400 });
   }
 
-  // La venta se firma con quien esta adentro, no con lo que venga en el
-  // mensaje: asi nadie puede acreditarle una venta a otra vendedora.
-  if (sesion.id > 0) venta.vendedora_id = sesion.id;
+  // Quien VENDIO viene en la venta: se elige al cobrar, porque una atiende a
+  // la clienta y otra le cobra. Quien COBRO es la cuenta con la que se entro.
+  // La pantalla lo manda porque una venta hecha sin internet puede subirse
+  // ya con otra cuenta adentro; si no viene, se toma la de ahora.
+  if (!venta.cobro?.trim()) venta.cobro = sesion.nombre;
 
   const resultado = registrarVenta(venta);
   if (!resultado.ok) {

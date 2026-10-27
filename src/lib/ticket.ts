@@ -1,4 +1,5 @@
 import { pesos } from "./dinero";
+import { LOGO_KONEKT } from "./logoKonekt";
 import { FORMAS_PAGO, NOMBRE_FORMA_PAGO } from "./tipos";
 
 /**
@@ -177,14 +178,30 @@ export const CSS_TICKET = `/* ==================================================
    le quite lugar al nombre de la tienda. Negro puro como todo lo demas: un
    gris no sale en la termica. */
 .ticket-firma {
-  margin-bottom: 2mm;
-  font-size: 0.6rem;
-  letter-spacing: 0.12em;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5mm;
+  margin-bottom: 3mm;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
 }
 
-.ticket-firma strong {
-  font-weight: 700;
+/* Del tamano de la palabra "Boutique": se lee la marca sin competir con el
+   VENUS de abajo. "Hecho por" va a la par, porque el logo ya dice Konekt. */
+.ticket-firma img {
+  display: block;
+  width: 17.5mm;
+  height: auto;
+}
+
+/* Al imprimir, que el navegador no suavice las orillas con grises: en la
+   termica un gris sale como puntos sueltos. En pantalla si se suaviza, para
+   que no se vea dentado. */
+@media print {
+  .ticket-firma img {
+    image-rendering: pixelated;
+  }
 }
 
 .ticket-negocio {
@@ -446,7 +463,10 @@ export function armarTicketHtml(datos: TicketVenta): string {
     .join("");
 
   return `<article class="ticket">
-  <p class="ticket-firma">Powered by <strong>Konekt</strong></p>
+  <div class="ticket-firma">
+    <span>Hecho por</span>
+    <img src="${LOGO_KONEKT}" alt="Konekt" />
+  </div>
   <header class="ticket-encabezado">
     <p class="ticket-negocio">Venus</p>
     <p class="ticket-marca">Boutique</p>

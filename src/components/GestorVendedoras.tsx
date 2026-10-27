@@ -1,23 +1,51 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { agregarVendedora, ponerPin, quitarPin } from "@/acciones/vendedoras";
+import { agregarVendedora, ponerPin, ponerPinVentas, quitarPin, quitarPinDeVentas } from "@/acciones/vendedoras";
 import type { Vendedora } from "@/lib/consultas";
 import { Aviso, Boton, Insignia, Tarjeta } from "./ui";
 import { IconoCandado, IconoPersona } from "./iconos";
 
+/** El mismo nombre que NOMBRE_CUENTA_VENTAS de lib/sesion, que no se puede importar aqui (es del servidor). */
+const NOMBRE_VENTAS = "VENTAS";
+
 /**
- * A cada vendedora se le pone su PIN aqui. La lista sale del personal que ya
+ * Las vendedoras y los PIN para entrar. La lista sale del personal que ya
  * capturaron en la bodega: es la misma gente, no hay por que escribirla dos
- * veces.
+ * veces. Una vendedora no necesita PIN para aparecer al cobrar: basta con
+ * que este en la lista. El PIN de VENTAS es el que usan todas para entrar.
  */
-export default function GestorVendedoras({ personal }: { personal: Vendedora[] }) {
+export default function GestorVendedoras({
+  personal,
+  hayPinVentas,
+}: {
+  personal: Vendedora[];
+  hayPinVentas: boolean;
+}) {
   const [editando, setEditando] = useState<number | null>(null);
   const [pin, setPin] = useState("");
   const [rol, setRol] = useState("vendedora");
   const [aviso, setAviso] = useState<{ tipo: "ok" | "error"; texto: string } | null>(null);
   const [nombreNueva, setNombreNueva] = useState("");
+  const [pinVentas, setPinVentas] = useState("");
+  const [editandoVentas, setEditandoVentas] = useState(false);
   const [pendiente, empezar] = useTransition();
+
+  const avisar = (resultado: { ok: true; mensaje?: string } | { ok: false; error: string }) =>
+    setAviso(
+      resultado.ok ? { tipo: "ok", texto: resultado.mensaje ?? "Listo." } : { tipo: "error", texto: resultado.error }
+    );
+
+  const guardarVentas = () => {
+    empezar(async () => {
+      const resultado = await ponerPinVentas(pinVentas);
+      avisar(resultado);
+      if (resultado.ok) {
+        setPinVentas("");
+        setEditandoVentas(false);
+      }
+    });
+  };
 
   const guardar = (id: number) => {
     empezar(async () => {
@@ -59,6 +87,70 @@ export default function GestorVendedoras({ personal }: { personal: Vendedora[] }
   return (
     <div className="space-y-4">
       {aviso ? <Aviso tipo={aviso.tipo === "ok" ? "ok" : "error"}>{aviso.texto}</Aviso> : null}
+
+      <Tarjeta>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="etiqueta mb-1">PIN de la caja: {NOMBRE_VENTAS}</p>
+            <p className="max-w-xl text-sm text-humo">
+              Con este PIN entran todas a cobrar. Al cobrar se elige de la lista quien hizo la venta.{" "}
+              {NOMBRE_VENTAS} no es una vendedora: no aparece en la lista ni en la bodega.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {hayPinVentas ? (
+              <Insignia tono="ok">
+                <IconoCandado tamano={13} /> Con PIN
+              </Insignia>
+            ) : (
+              <Insignia tono="aviso">Sin PIN</Insignia>
+            )}
+            <Boton
+              onClick={() => {
+                setEditandoVentas((abierto) => !abierto);
+                setPinVentas("");
+              }}
+            >
+              {hayPinVentas ? "Cambiar PIN" : "Poner PIN"}
+            </Boton>
+            {hayPinVentas ? (
+              <Boton
+                variante="peligro"
+                onClick={() => empezar(async () => avisar(await quitarPinDeVentas()))}
+                disabled={pendiente}
+              >
+                Quitar
+              </Boton>
+            ) : null}
+          </div>
+        </div>
+
+        {editandoVentas ? (
+          <div className="mt-3 flex flex-wrap items-end gap-3 rounded-sm border border-linea bg-crema p-3">
+            <div>
+              <label className="etiqueta" htmlFor="pin-ventas">
+                PIN nuevo
+              </label>
+              <input
+                id="pin-ventas"
+                className="campo sin-flechas w-40 text-lg"
+                inputMode="numeric"
+                value={pinVentas}
+                maxLength={8}
+                onChange={(e) => setPinVentas(e.target.value.replace(/\D/g, ""))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") guardarVentas();
+                }}
+                placeholder="4 numeros"
+                autoComplete="off"
+              />
+            </div>
+            <Boton variante="primario" onClick={guardarVentas} disabled={pendiente}>
+              Guardar
+            </Boton>
+          </div>
+        ) : null}
+      </Tarjeta>
 
       <Tarjeta>
         <p className="etiqueta">Agregar una vendedora</p>
@@ -113,7 +205,9 @@ export default function GestorVendedoras({ personal }: { personal: Vendedora[] }
                       <IconoCandado tamano={13} /> Con PIN
                     </Insignia>
                   ) : (
-                    <Insignia tono="aviso">Sin PIN</Insignia>
+                    // Sin PIN no entra por su cuenta, pero si aparece al cobrar:
+                    // con el PIN de VENTAS eso es lo normal, no un pendiente.
+                    <Insignia>Sin PIN propio</Insignia>
                   )}
                   <Boton
                     onClick={() => {

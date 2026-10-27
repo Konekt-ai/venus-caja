@@ -1,0 +1,14 @@
+/**
+ * El logo de Konekt para el ticket, en blanco y negro puro.
+ *
+ * Va escrito aqui adentro (como data URI) y no como archivo en public/
+ * porque el ticket se imprime desde un marco oculto que tambien tiene que
+ * funcionar sin internet: si tuviera que ir a buscar la imagen, sin
+ * conexion saldria el ticket sin logo.
+ *
+ * El original es a color, con degradados azul y verde. La termica no
+ * imprime grises: el verde claro saldria casi invisible. Por eso se paso a
+ * dos tonos (todo lo que no era blanco quedo negro) y se dejo de 480 px de
+ * ancho, mas que suficiente para los 30 mm que mide en el papel.
+ */
+export const LOGO_KONEKT = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAeAAAACKAQMAAABIAgteAAAABlBMVEUAAAD///+l2Z/dAAAACXBIWXMAAAsTAAALEwEAmpwYAAAE8UlEQVR42u3ZPbKdNhQAYBEKSlym8IQtpExHlpIlpHThCcxkAdmSumyDHYSSQiMi6fxKwIuMZlLZM34Pc+/HPVc6HI5kc9b/ccZM2QnzHX/H/4mN6dPBHo7mt3hrwTYcLdX4SJ/EeA1H51scDrq32PNVXuDwghne4vAvM77FcZqnt7himp9xxTQ/44ppfsYV0/yIfQt2FTnyiI+KHHnEe0WOPOKtIkc+xPNbXJMjj7gmRx5xzTQ/4ftSsNEpDzPxgKUUHPLVPY+hhe/0gKUUyO297HTO4zwCjh8Uxze8CphLwYGjHrHVz4OecXhLl2HOEYshRGxoBiweMe4zbClHjKTrH0afjEeAw0tDhleM1hn8kPCOLwbD8fBOwiHKMcMU4Z5OLungdyRpHNJkAA5w0phLwWbw4wL+DQlesSccopw1droMpo8L4FejbpoUGWBTYC4FhiKET4N44J3hyyQco1w0plLgWWi8GhzuhGOUp8abpBBGSNhwOODSjy7DNM2HoQgVxnBCaAkfBAivkpQYIeOFw0Ecc6QeUzgD4JgjGaYc2fjrMZbr9IAt/iDMOWI5wgIvK+O1wE4/7SBCxinOlAkd4HRBhTlHInYltjGSGBzjRWN+XKTfG6VNemPCUHES9jA8UoY2de/NEGH6ovD91jQT8WfEDoZHMOWIp/QHDLduZDCWCR/8YESsSkEHwUcMGR5xB7M4R7zD8AimaXbwwgq4R8x1KeGNCwTgH2iaD3jBQtkd8ITE6aCGZNioRm6CCAUPnuOcEE8lHhSWgu8Aj1h249+V7z/BI5a/GX89YhzbW0wv7PRkGRzjMfz9Ccc2w5PCjrEHjAkU8WcZ2wJv8jB8wj/K2BZhI/aA5zv8Sca2GO1bTIUErmPuMLbNXQUeL7jL8fgBni7YKHx+M14S7ivwNeyUWrYKXwcsBfMaj9X4miTpenW4q8RnJe6r8fWuwhagCl/u53S9S5Lc4/mKl5vcrsZzNS4K4M+GertbPEmzrho7wl/gVF5JHvGQY+zVb7HL8acSd567blUABY8K/1I86KAp6crSe4+/Fo/YEMdKnZsq+oi9LDIdfMMcj7gmyx83t7grOwNoWgRvJU5J+3fCPfQkCs+4JeX4EXsKpvXOn/j8hnwSDF3eVDzcBXe4ceawy5jpgcptOPRLqq0gDD2Jp37b0hJnokWkT2OeNzQKL/HspHrPDJ+8TpmhJ1bYYpzSuFLDoZbAHTZx9opHqOnSMsPw/KMW30X7SHijlZdq1mHW/lIrmIW73hInB90QNIjp335UuxVz3jITlu5Z1hhwdw5qn2TKm/UHzFMi2GUt+qwx16FF1lWwahnU3tCYr24IO66vsqLL8Wn0+06NfYFXqQNqhdDnKzrC0jwwngpsKUu4IjFes9UNJs2q8cZZQgtRxjZbV2FyZ3jXC48cb9mKDvMzvrPT+560AJtzvGerWOzjN42dwdzjZT9jl62fMT8z7KkcwC2qsc9X7pCfh+7+YKLTOAwFhmHs9Q6NLLV5f1vttmTYZlsdkp+d3lnv6LIFPrJNFiy+q0pPnOhwjeGCfba9c9LDPK0ZZPco/r7b/dxutiZ9CJQ3746PNvIetumM2qP7lv8QKf4HpQmvLdi24K0F7y34aMGuBfsWfDbhtQXbFry14L0FHy3YtWDfgs8mvLZg24K3Fry3YPe/4n8BW5rPaP6cAyAAAAAASUVORK5CYII=";

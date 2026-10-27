@@ -2,7 +2,17 @@
 
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
-import { esDuenio, guardarPin, sesionActual } from "@/lib/sesion";
+import {
+  esDuenio,
+  guardarPin,
+  guardarPinVentas,
+  ID_CUENTA_VENTAS,
+  NOMBRE_CUENTA_VENTAS,
+  pinDelDuenio,
+  quitarPinVentas,
+  sesionActual,
+  verificarPin,
+} from "@/lib/sesion";
 import type { Resultado } from "@/lib/tipos";
 
 /**
@@ -22,17 +32,54 @@ export async function ponerPin(personalId: number, pin: string, rol: string): Pr
     | undefined;
   if (!persona) return { ok: false, error: "No se encontro a esa persona en el personal de la bodega." };
 
-  // Dos vendedoras con el mismo PIN harian que las ventas se le acreditaran a
-  // la equivocada, porque al entrar solo se teclea el PIN.
-  const { verificarPin } = await import("@/lib/sesion");
-  const yaEsDeAlguien = verificarPin(limpio);
-  if (yaEsDeAlguien.ok && yaEsDeAlguien.sesion.id !== personalId) {
-    return { ok: false, error: `Ese PIN ya es de ${yaEsDeAlguien.sesion.nombre}. Ponle otro.` };
-  }
+  const ocupado = pinOcupado(limpio, personalId);
+  if (ocupado) return { ok: false, error: ocupado };
 
   guardarPin(personalId, limpio, rol === "duenio" ? "duenio" : "vendedora");
   revalidatePath("/vendedoras");
   return { ok: true, mensaje: `${persona.nombre} ya puede entrar con su PIN.` };
+}
+
+/**
+ * Por que un PIN no se puede usar, o null si esta libre.
+ *
+ * Al entrar solo se teclea el PIN, asi que dos cuentas con el mismo
+ * entrarian a la que se revise primero: el del duenio le gana a todos, y
+ * quien tuviera ese PIN entraria como duenio. 'propio' es la cuenta que se
+ * esta cambiando (su PIN de antes no cuenta como ocupado).
+ */
+function pinOcupado(pin: string, propio: number): string | null {
+  if (pin === pinDelDuenio()) return "Ese es el PIN del duenio. Ponle otro.";
+  const yaEsDeAlguien = verificarPin(pin);
+  if (yaEsDeAlguien.ok && yaEsDeAlguien.sesion.id !== propio) {
+    return `Ese PIN ya es de ${yaEsDeAlguien.sesion.nombre}. Ponle otro.`;
+  }
+  return null;
+}
+
+/** El PIN de la cuenta VENTAS, con el que entran todas a cobrar. */
+export async function ponerPinVentas(pin: string): Promise<Resultado> {
+  const sesion = await sesionActual();
+  if (!esDuenio(sesion)) return { ok: false, error: "Solo el duenio puede cambiar los PIN." };
+
+  const limpio = (pin ?? "").trim();
+  if (!/^\d{4,8}$/.test(limpio)) return { ok: false, error: "El PIN son de 4 a 8 numeros." };
+
+  const ocupado = pinOcupado(limpio, ID_CUENTA_VENTAS);
+  if (ocupado) return { ok: false, error: ocupado };
+
+  guardarPinVentas(limpio);
+  revalidatePath("/vendedoras");
+  return { ok: true, mensaje: `Listo: con ese PIN entran todas como ${NOMBRE_CUENTA_VENTAS}.` };
+}
+
+export async function quitarPinDeVentas(): Promise<Resultado> {
+  const sesion = await sesionActual();
+  if (!esDuenio(sesion)) return { ok: false, error: "Solo el duenio puede cambiar los PIN." };
+
+  quitarPinVentas();
+  revalidatePath("/vendedoras");
+  return { ok: true, mensaje: `Se quito el PIN de ${NOMBRE_CUENTA_VENTAS}. Ya nadie entra con el.` };
 }
 
 export async function quitarPin(personalId: number): Promise<Resultado> {
@@ -76,5 +123,5 @@ export async function agregarVendedora(nombre: string, puesto: string): Promise<
   );
 
   revalidatePath("/vendedoras");
-  return { ok: true, mensaje: `${limpio} quedo en la lista. Ahora ponle su PIN.` };
+  return { ok: true, mensaje: `${limpio} quedo en la lista: ya se puede elegir al cobrar.` };
 }

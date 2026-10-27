@@ -1,6 +1,6 @@
 import "server-only";
 import { getDb } from "./db";
-import type { ModeloCaja } from "./tipos";
+import type { ModeloCaja, QuienVende } from "./tipos";
 
 /**
  * Lecturas de la base. Todo lo que la caja necesita saber del catalogo,
@@ -140,11 +140,23 @@ export function listarVendedoras(soloActivas = true): Vendedora[] {
   return filas.map((f) => ({ ...f, tiene_pin: f.tiene_pin === 1 }));
 }
 
+/**
+ * Las que pueden quedar como quien hizo la venta: el personal activo de la
+ * bodega, tengan PIN o no. Una vendedora no necesita PIN para vender: entra
+ * con el de VENTAS y aqui se elige su nombre. La cuenta VENTAS no esta en
+ * 'personal', asi que nunca sale en esta lista.
+ */
+export function quienesVenden(): QuienVende[] {
+  return listarVendedoras(true).map(({ id, nombre }) => ({ id, nombre }));
+}
+
 export type VentaResumen = {
   id: string;
   folio: string;
   fecha: string;
   vendedora: string;
+  /** Con que cuenta se cobro; puede ser VENTAS o alguien distinto de quien vendio. */
+  cobro: string;
   piezas: number;
   total: number;
   estado: string;
@@ -155,7 +167,7 @@ export type VentaResumen = {
 export function ventasDelDia(dia: string): VentaResumen[] {
   return getDb()
     .prepare(
-      `SELECT v.id, v.folio, v.fecha, v.vendedora, v.piezas, v.total, v.estado,
+      `SELECT v.id, v.folio, v.fecha, v.vendedora, v.cobro, v.piezas, v.total, v.estado,
               COALESCE((SELECT group_concat(pg.forma, ', ') FROM caja_pagos pg WHERE pg.venta_id = v.id), '') AS formas
          FROM caja_ventas v
         WHERE date(v.fecha) = ?

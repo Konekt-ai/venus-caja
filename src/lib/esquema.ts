@@ -97,7 +97,10 @@ CREATE TABLE IF NOT EXISTS caja_ventas (
   cancelada_en       TEXT,
   corte_id           INTEGER REFERENCES caja_cortes(id) ON DELETE SET NULL,
   nota               TEXT    NOT NULL DEFAULT '',
-  guardada_en        TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+  guardada_en        TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+  -- 'vendedora' es quien hizo la venta (se elige al cobrar); 'cobro' es la
+  -- cuenta con la que se entro a la caja, que puede ser VENTAS.
+  cobro              TEXT    NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_caja_ventas_fecha  ON caja_ventas(fecha DESC);
 CREATE INDEX IF NOT EXISTS idx_caja_ventas_corte  ON caja_ventas(corte_id);

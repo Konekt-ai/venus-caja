@@ -135,12 +135,16 @@ export function registrarVenta(venta: VentaParaGuardar): Resultado<VentaGuardada
       if (!venta.lineas.length) throw new ErrorDeVenta("La venta esta vacia: agrega al menos una prenda.");
       if (!FORMAS_PAGO.includes(venta.forma_pago)) throw new ErrorDeVenta("Falta decir como se pago.");
 
+      // Quien vendio se elige al cobrar y tiene que ser alguien del personal.
+      // No se pide que siga activa: una venta cobrada sin internet puede
+      // subirse despues de que la dieron de baja, y no por eso se pierde.
       const vendedora = venta.vendedora_id
         ? (db.prepare("SELECT id, nombre FROM personal WHERE id = ?").get(venta.vendedora_id) as
             | { id: number; nombre: string }
             | undefined)
         : undefined;
       if (!vendedora) throw new ErrorDeVenta("Falta decir quien hizo la venta.");
+      const cobro = (venta.cobro ?? "").trim().slice(0, 60);
 
       // --- Cuentas -------------------------------------------------------
       // Las piezas tienen que ser enteras y positivas. Sin esta revision, un
@@ -184,16 +188,18 @@ export function registrarVenta(venta: VentaParaGuardar): Resultado<VentaGuardada
       const hoy = (db.prepare("SELECT date('now','localtime') AS d").get() as { d: string }).d;
       const dia = fecha ? fecha.slice(0, 10) : hoy;
       const folio = asignarFolio(db, caja, venta.folio);
-      const corteId = corteDelDia(db, caja, dia, vendedora.nombre);
+      // El corte lo abre quien esta en la caja, no quien atendio a la clienta.
+      const corteId = corteDelDia(db, caja, dia, cobro || vendedora.nombre);
 
       db.prepare(
         `INSERT INTO caja_ventas
            (id, folio, caja, fecha, vendedora_id, vendedora, subtotal, descuento,
-            descuento_tipo, descuento_valor, total, piezas, estado, corte_id, nota)
+            descuento_tipo, descuento_valor, total, piezas, estado, corte_id, nota, cobro)
          VALUES (@id, @folio, @caja, COALESCE(@fecha, datetime('now','localtime')), @vendedora_id, @vendedora,
                  @subtotal, @descuento, @descuento_tipo, @descuento_valor, @total, @piezas,
-                 'cobrada', @corte_id, @nota)`
+                 'cobrada', @corte_id, @nota, @cobro)`
       ).run({
+        cobro,
         id: venta.id,
         folio,
         caja,

@@ -10,12 +10,14 @@ import {
   dejarEnEspera,
   encolar,
   guardarCatalogo,
+  guardarVendedoras,
   guardarVentaEnCurso,
   idUnico,
   retomarDeEspera,
   siguienteFolioLocal,
   vaciarCola,
   ventaEnCurso,
+  vendedorasGuardadas,
   ventasEnEspera,
   type VentaEnEspera,
 } from "@/lib/almacen";
@@ -23,7 +25,16 @@ import { buscar, hayEmpate, partirCantidad } from "@/lib/busqueda";
 import { aCentavos, pesos } from "@/lib/dinero";
 import { imprimirDocumento } from "@/lib/imprimir";
 import { documentoTicket } from "@/lib/ticket";
-import { FORMAS_PAGO, NOMBRE_FORMA_PAGO, type FormaPago, type LineaVenta, type ModeloCaja, type TipoDescuento, type VentaParaGuardar } from "@/lib/tipos";
+import {
+  FORMAS_PAGO,
+  NOMBRE_FORMA_PAGO,
+  type FormaPago,
+  type LineaVenta,
+  type ModeloCaja,
+  type QuienVende,
+  type TipoDescuento,
+  type VentaParaGuardar,
+} from "@/lib/tipos";
 import { Boton, Insignia } from "./ui";
 import {
   IconoAlerta,
@@ -55,7 +66,10 @@ import {
 
 type Props = {
   catalogoInicial: ModeloCaja[];
-  vendedora: { id: number; nombre: string };
+  /** La lista de quien puede quedar como quien hizo la venta. */
+  vendedorasIniciales: QuienVende[];
+  /** Con que cuenta se entro: una vendedora o VENTAS (la de todas). */
+  cuenta: { id: number; nombre: string };
   caja: string;
   negocio: string;
   ultimoFolio: number;
@@ -73,8 +87,18 @@ function fechaLocal(): string {
   );
 }
 
-export default function Cobrar({ catalogoInicial, vendedora, caja, negocio, ultimoFolio }: Props) {
+export default function Cobrar({ catalogoInicial, vendedorasIniciales, cuenta, caja, negocio, ultimoFolio }: Props) {
   const [catalogo, setCatalogo] = useState<ModeloCaja[]>(catalogoInicial);
+  const [vendedoras, setVendedoras] = useState<QuienVende[]>(vendedorasIniciales);
+  // Quien hizo la venta que se esta cobrando. Si se entro con el PIN de una
+  // vendedora, de entrada es ella; con el de VENTAS, nadie: hay que elegir.
+  const propia = useMemo(
+    () => (vendedoras.some((v) => v.id === cuenta.id) ? cuenta.id : null),
+    [vendedoras, cuenta.id]
+  );
+  const [vendio, setVendio] = useState<number | null>(() =>
+    vendedorasIniciales.some((v) => v.id === cuenta.id) ? cuenta.id : null
+  );
   const [texto, setTexto] = useState("");
   const [seleccion, setSeleccion] = useState(0);
   const [lineas, setLineas] = useState<LineaVenta[]>([]);
@@ -103,6 +127,13 @@ export default function Cobrar({ catalogoInicial, vendedora, caja, negocio, ulti
 
   // --- Arranque -----------------------------------------------------------
   useEffect(() => {
+    if (vendedorasIniciales.length > 0) {
+      guardarVendedoras(vendedorasIniciales);
+    } else {
+      const copia = vendedorasGuardadas();
+      if (copia.length > 0) setVendedoras(copia);
+    }
+
     if (catalogoInicial.length > 0) {
       guardarCatalogo(catalogoInicial);
     } else {
@@ -130,7 +161,7 @@ export default function Cobrar({ catalogoInicial, vendedora, caja, negocio, ulti
 
     yaSeRestauro.current = true;
     enfocarBuscador();
-  }, [catalogoInicial, ultimoFolio, enfocarBuscador]);
+  }, [catalogoInicial, vendedorasIniciales, ultimoFolio, enfocarBuscador]);
 
   // Se guarda en cada cambio, no al salir: si se va la luz no hay oportunidad
   // de guardar nada.
@@ -173,7 +204,18 @@ export default function Cobrar({ catalogoInicial, vendedora, caja, negocio, ulti
     try {
       const respuesta = await fetch("/api/catalogo");
       if (!respuesta.ok) return;
-      const datos = (await respuesta.json()) as { ok?: boolean; catalogo?: ModeloCaja[]; ultimo_folio?: number };
+      const datos = (await respuesta.json()) as {
+        ok?: boolean;
+        catalogo?: ModeloCaja[];
+        ultimo_folio?: number;
+        vendedoras?: QuienVende[];
+      };
+      // La lista de vendedoras se cambia de una vez: no hay nada a medias
+      // que dependa de ella, y la que se elija al cobrar sale de aqui.
+      if (datos.ok && Array.isArray(datos.vendedoras) && datos.vendedoras.length > 0) {
+        guardarVendedoras(datos.vendedoras);
+        setVendedoras(datos.vendedoras);
+      }
       if (!datos.ok || !Array.isArray(datos.catalogo) || datos.catalogo.length === 0) return;
       guardarCatalogo(datos.catalogo);
       catalogoNuevo.current = { catalogo: datos.catalogo, ultimo_folio: datos.ultimo_folio ?? 0 };
@@ -354,13 +396,18 @@ export default function Cobrar({ catalogoInicial, vendedora, caja, negocio, ulti
 
   const cobrar = useCallback(
     (forma: FormaPago, recibido: number) => {
+      // La ventana de cobro no deja confirmar sin elegirla; esto es por si acaso.
+      const quien = vendedoras.find((v) => v.id === vendio);
+      if (!quien) return;
+
       const folio = siguienteFolioLocal(caja, ultimoFolio);
       const cambio = forma === "efectivo" ? recibido - total : 0;
 
       const venta: VentaParaGuardar = {
         id: idUnico(),
         folio,
-        vendedora_id: vendedora.id,
+        vendedora_id: quien.id,
+        cobro: cuenta.nombre,
         lineas,
         descuento_tipo: descuentoTipo,
         descuento_valor: descuentoValor,
@@ -377,7 +424,7 @@ export default function Cobrar({ catalogoInicial, vendedora, caja, negocio, ulti
           venta: {
             folio,
             fecha: fechaLocal().replace("T", " "),
-            vendedora: vendedora.nombre,
+            vendedora: quien.nombre,
             subtotal,
             descuento,
             total,
@@ -418,6 +465,9 @@ export default function Cobrar({ catalogoInicial, vendedora, caja, negocio, ulti
 
       setPagando(false);
       limpiar();
+      // La siguiente clienta puede atenderla otra: con VENTAS se vuelve a
+      // elegir en cada cobro, para que ninguna venta se firme por inercia.
+      setVendio(propia);
       setAviso({
         tipo: "ok",
         texto:
@@ -428,7 +478,7 @@ export default function Cobrar({ catalogoInicial, vendedora, caja, negocio, ulti
 
       void sincronizar();
     },
-    [caja, ultimoFolio, total, vendedora, lineas, descuentoTipo, descuentoValor, subtotal, descuento, piezas, limpiar, sincronizar]
+    [caja, ultimoFolio, total, vendedoras, vendio, propia, cuenta.nombre, lineas, descuentoTipo, descuentoValor, subtotal, descuento, piezas, limpiar, sincronizar]
   );
 
   // --- Precio registrado de una prenda ------------------------------------
@@ -621,7 +671,7 @@ export default function Cobrar({ catalogoInicial, vendedora, caja, negocio, ulti
               className="flex items-center gap-2 rounded-sm border border-linea-fuerte bg-papel px-3 py-1.5 text-sm font-semibold text-tinta hover:border-oro hover:bg-oro-tenue"
             >
               <IconoPersona tamano={16} />
-              {vendedora.nombre}
+              {cuenta.nombre}
               <span className="text-[0.65rem] font-normal text-humo">F10</span>
             </button>
 
@@ -849,6 +899,9 @@ export default function Cobrar({ catalogoInicial, vendedora, caja, negocio, ulti
       {pagando ? (
         <VentanaPago
           total={total}
+          vendedoras={vendedoras}
+          vendio={vendio}
+          onVendio={setVendio}
           onCerrar={() => {
             setPagando(false);
             enfocarBuscador();
@@ -938,22 +991,37 @@ const ICONO_FORMA = {
  * El cobro. Se abre con el efectivo ya elegido y el cursor en "con cuanto
  * paga", que es lo que pasa en nueve de cada diez ventas: se teclea la
  * cantidad, Enter, y listo.
+ *
+ * Arriba va quien hizo la venta. Si todavia no se sabe (se entro con el PIN
+ * de VENTAS), el cursor empieza ahi y no se puede confirmar sin elegirla:
+ * una venta firmada por nadie no sirve para saber cuanto vendio cada una.
  */
 function VentanaPago({
   total,
+  vendedoras,
+  vendio,
+  onVendio,
   onCerrar,
   onCobrar,
 }: {
   total: number;
+  vendedoras: QuienVende[];
+  vendio: number | null;
+  onVendio: (id: number | null) => void;
   onCerrar: () => void;
   onCobrar: (forma: FormaPago, recibido: number) => void;
 }) {
   const [forma, setForma] = useState<FormaPago>("efectivo");
   const [recibido, setRecibido] = useState("");
+  const [faltaQuien, setFaltaQuien] = useState(false);
   const campo = useRef<HTMLInputElement>(null);
+  const lista = useRef<HTMLSelectElement>(null);
+  const conTeclado = useRef(false);
+  const sabeQuien = vendedoras.some((v) => v.id === vendio);
 
   useEffect(() => {
-    window.setTimeout(() => campo.current?.focus(), 20);
+    window.setTimeout(() => (sabeQuien ? campo.current : lista.current)?.focus(), 20);
+    // Solo al abrir: despues el cursor lo mueve quien cobra.
   }, []);
 
   const enCentavos = forma === "efectivo" ? (aCentavos(recibido) ?? 0) : total;
@@ -970,6 +1038,11 @@ function VentanaPago({
   }, [total]);
 
   const confirmar = () => {
+    if (!sabeQuien) {
+      setFaltaQuien(true);
+      lista.current?.focus();
+      return;
+    }
     if (!alcanza) return;
     onCobrar(forma, forma === "efectivo" ? enCentavos : total);
   };
@@ -978,6 +1051,15 @@ function VentanaPago({
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-tinta/50 p-4"
       onKeyDown={(e) => {
+        // En la lista de vendedoras las letras buscan el nombre y Enter la
+        // elige: ahi no son atajos de forma de pago ni confirman el cobro.
+        if (e.target instanceof HTMLSelectElement) {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            if (sabeQuien) campo.current?.focus();
+          }
+          return;
+        }
         const tecla = e.key.toLowerCase();
         if (tecla === "e") setForma("efectivo");
         if (tecla === "t") setForma("tarjeta");
@@ -988,13 +1070,60 @@ function VentanaPago({
         }
       }}
     >
-      <div className="w-full max-w-xl rounded-sm border border-linea-fuerte bg-papel">
+      {/* Con la lista de vendedoras la ventana crecio: en una pantalla baja se
+          desliza en vez de cortarse arriba y abajo. */}
+      <div className="max-h-full w-full max-w-xl overflow-y-auto rounded-sm border border-linea-fuerte bg-papel">
         <div className="border-b border-linea px-6 py-4 text-center">
           <p className="etiqueta">Total a cobrar</p>
           <p className="titulo cifra text-cifra-grande text-vino">{pesos(total)}</p>
         </div>
 
         <div className="p-6">
+          <label className="etiqueta" htmlFor="quien-vendio">
+            Quien hizo la venta
+            <span className="ml-2 font-normal normal-case tracking-normal text-humo">
+              la primera letra de su nombre y Enter
+            </span>
+          </label>
+          <select
+            id="quien-vendio"
+            ref={lista}
+            className={`campo mb-1 text-lg ${faltaQuien && !sabeQuien ? "border-rojo" : ""}`}
+            value={sabeQuien && vendio !== null ? String(vendio) : ""}
+            onKeyDown={() => {
+              conTeclado.current = true;
+            }}
+            onMouseDown={() => {
+              conTeclado.current = false;
+            }}
+            onChange={(e) => {
+              const id = Number(e.target.value);
+              onVendio(id > 0 ? id : null);
+              setFaltaQuien(false);
+              // Elegida con el mouse, el cursor pasa a "con cuanto paga". Con
+              // el teclado no: la letra que la eligio caeria en ese campo, y
+              // con las flechas se brincaria antes de llegar a la que es. Ahi
+              // el paso lo da el Enter.
+              if (id > 0 && !conTeclado.current) window.setTimeout(() => campo.current?.focus(), 0);
+            }}
+          >
+            <option value="">Elige a la vendedora...</option>
+            {vendedoras.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.nombre}
+              </option>
+            ))}
+          </select>
+          {vendedoras.length === 0 ? (
+            <p className="mb-4 text-sm font-medium text-rojo">
+              No hay vendedoras dadas de alta. El duenio las agrega en Vendedoras.
+            </p>
+          ) : faltaQuien && !sabeQuien ? (
+            <p className="mb-4 text-sm font-medium text-rojo">Elige quien hizo la venta para poder cobrar.</p>
+          ) : (
+            <div className="mb-4" />
+          )}
+
           <p className="etiqueta">Como paga</p>
           <div className="mb-5 grid grid-cols-3 gap-2">
             {FORMAS_PAGO.map((f) => {
