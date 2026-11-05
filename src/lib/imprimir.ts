@@ -1,5 +1,7 @@
 "use client";
 
+import { ajustarHojaAlTicket } from "./rollo";
+
 /**
  * Mandar algo a la impresora sin perder el foco del buscador.
  *
@@ -68,6 +70,7 @@ export function imprimirDocumento(html: string, rollo: 80 | 58 = 80): void {
 
   const lanzar = () => {
     try {
+      if (rollo === 58 && marco.contentDocument) ajustarHojaAlTicket(marco.contentDocument, 58);
       marco.contentWindow?.focus();
       marco.contentWindow?.print();
     } catch {

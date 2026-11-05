@@ -5,7 +5,7 @@ import { Boton } from "@/components/ui";
 import { IconoImprimir } from "@/components/iconos";
 import { ticketEscPos } from "@/lib/escpos";
 import { comoImprime, imprimirConRawBT } from "@/lib/rawbt";
-import { anchoRollo } from "@/lib/rollo";
+import { ajustarHojaAlTicket, anchoRollo } from "@/lib/rollo";
 import { CSS_ROLLO_58, type TicketVenta } from "@/lib/ticket";
 
 /**
@@ -54,8 +54,12 @@ function imprimirEnHoja(): void {
  */
 export function BotonImprimir({ datos }: { datos?: TicketVenta }) {
   const imprimir = () => {
-    if (datos && comoImprime() === "rawbt") imprimirConRawBT(ticketEscPos(datos));
-    else window.print();
+    if (datos && comoImprime() === "rawbt") {
+      imprimirConRawBT(ticketEscPos(datos));
+      return;
+    }
+    if (anchoRollo() === 58) ajustarHojaAlTicket(document, 58);
+    window.print();
   };
   return (
     <Boton variante="primario" tamano="grande" onClick={imprimir}>
@@ -128,6 +132,9 @@ export function ImpresionAutomatica({ activa, folio }: { activa: boolean; folio:
       // con su hoja de estilos; imprimir antes saca el papel sin formato.
       window.requestAnimationFrame(() => {
         try {
+          // En el rollo de 58 mm (el SUNMI) la hoja se pide del largo del
+          // ticket: si no, el telefono deja un tramo enorme en blanco.
+          if (anchoRollo() === 58) ajustarHojaAlTicket(document, 58);
           window.print();
         } finally {
           // Chrome regresa de print() cuando se cierra el dialogo; Firefox no
