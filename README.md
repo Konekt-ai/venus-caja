@@ -159,6 +159,25 @@ media pantalla); para escribir un codigo a mano esta el boton **Teclado**.
 El lector del SUNMI tiene que estar en modo teclado ("KeyEvent") y mandar
 Enter al final, igual que el lector de la tienda.
 
+### Imprimir en el SUNMI
+
+De fabrica, la impresora del SUNMI no aparece en la ventana de imprimir de
+Chrome. Con el **plugin de impresora de SUNMI** (de su tienda de apps)
+aparece, y la caja imprime ahi igual que en la tienda. Se prepara una sola
+vez en el propio SUNMI: menu del nombre > **Impresora de este equipo** >
+**Por el navegador** y **58 mm**, y tocar **Imprimir ticket de prueba**. En
+el telefono sale la pantalla de imprimir: se elige la impresora del SUNMI y
+se toca Imprimir. El ticket se queda listo el tiempo que haga falta; no hay
+prisa por tocar Imprimir.
+
+Si algun dia no se pudiera usar el plugin, queda la opcion **Por RawBT**:
+la caja arma el ticket en el idioma de las termicas (ESC/POS, 32 letras por
+renglon) y se lo pasa a la app RawBT, configurada con la conexion
+**Bluetooth > InnerPrinter**, papel de 58 mm y modo ESC/POS.
+
+Todo esto se guarda en el navegador de ese equipo: la computadora de la
+tienda sigue imprimiendo por el navegador en 80 mm como siempre.
+
 ## Que pasa si se cae el internet
 
 **Se sigue cobrando.** Es la regla mas importante del sistema: si no se puede

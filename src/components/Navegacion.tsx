@@ -5,6 +5,7 @@ import {
   IconoCobrar,
   IconoEtiqueta,
   IconoHistorial,
+  IconoImprimir,
   IconoPersona,
   IconoPrenda,
   IconoReportes,
@@ -20,6 +21,7 @@ export default function Navegacion({ nombre, duenio }: { nombre: string; duenio:
   const enlaces = [
     { href: "/", texto: "Cobrar", Icono: IconoCobrar, siempre: true },
     { href: "/ventas", texto: "Ventas del dia", Icono: IconoHistorial, siempre: true },
+    { href: "/impresora", texto: "Impresora", Icono: IconoImprimir, siempre: true },
     { href: "/productos", texto: "Productos", Icono: IconoPrenda, siempre: false },
     { href: "/reportes", texto: "Reportes", Icono: IconoReportes, siempre: false },
     { href: "/vendedoras", texto: "Vendedoras", Icono: IconoPersona, siempre: false },

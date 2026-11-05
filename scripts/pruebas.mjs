@@ -1039,6 +1039,66 @@ ponerVendeEn.run(vendedora.id, "tienda");
 sesionLib.quitarPinCuenta("tianguis");
 comprobar("al quitar el PIN de TIANGUIS ya nadie entra con el", sesionLib.verificarPin("7391").ok === false);
 
+// =======================================================================
+seccion("16. El ticket para la impresora del SUNMI (ESC/POS, 58 mm)");
+// =======================================================================
+const escpos = await import(pathToFileURL(path.join(RAIZ, "src", "lib", "escpos.ts")).href);
+
+/** Los renglones de texto del ticket, sin la imagen ni los comandos. */
+function renglonesDe(bytes) {
+  // Se salta los comandos (ESC x n, GS x n) y la imagen (GS v 0 trae su tamano).
+  let texto = "";
+  for (let i = 0; i < bytes.length; ) {
+    const b = bytes[i];
+    if (b === 0x1b) {
+      i += bytes[i + 1] === 0x40 ? 2 : 3;
+    } else if (b === 0x1d && bytes[i + 1] === 0x76) {
+      i += 8 + (bytes[i + 4] + bytes[i + 5] * 256) * (bytes[i + 6] + bytes[i + 7] * 256);
+    } else if (b === 0x1d) {
+      i += 3;
+    } else {
+      texto += b === 0x0a ? "\n" : String.fromCharCode(b);
+      i += 1;
+    }
+  }
+  return texto.split("\n");
+}
+
+const ticketT = obtenerVenta("prueba-tianguis-1");
+const bytesT = escpos.ticketEscPos(ticketT);
+iguales("empieza reiniciando la impresora (ESC @)", [bytesT[0], bytesT[1]], [0x1b, 0x40]);
+const renglonesT = renglonesDe(bytesT);
+comprobar("trae el folio", renglonesT.some((r) => r.includes(ticketT.venta.folio)), renglonesT.join(" | "));
+comprobar("trae el total", renglonesT.some((r) => r.startsWith("TOTAL") && r.includes("700.00")));
+comprobar(
+  "ningun renglon pasa de 32 letras (el ancho del rollo de 58 mm)",
+  renglonesT.every((r) => r.length <= escpos.COLUMNAS),
+  renglonesT.filter((r) => r.length > escpos.COLUMNAS).join(" | ")
+);
+comprobar("trae la firma con el logo antes del nombre de la tienda", bytesT.indexOf(0x76) > 0 && bytesT.indexOf(0x76) < Buffer.from(bytesT).indexOf(Buffer.from("VENUS")));
+iguales("termina avanzando el papel para arrancarlo", [...bytesT.slice(-3)], [0x1b, 0x64, 4]);
+
+const conAcentos = escpos.ticketEscPos({
+  ...ticketT,
+  venta: { ...ticketT.venta, vendedora: "MARÍA PEÑA", estado: "cancelada", motivo_cancelacion: "Se equivocó" },
+});
+const renglonesA = renglonesDe(conAcentos);
+comprobar("quita los acentos para que salgan en cualquier termica", renglonesA.some((r) => r.includes("MARIA PENA")));
+comprobar(
+  "solo escribe letras que la termica entiende",
+  renglonesA.join("").split("").every((c) => c >= " " && c <= "~") && !renglonesA.join("").includes("?")
+);
+comprobar("el cancelado dice CANCELADA con su motivo", renglonesA.some((r) => r.includes("CANCELADA")) && renglonesA.some((r) => r.includes("Se equivoco")));
+
+const largo = escpos.ticketEscPos({
+  ...ticketT,
+  lineas: [{ codigo: "VD 194", descripcion: "VESTIDO LARGO DE NOCHE CON OLANES Y ENCAJE EN LAS MANGAS", piezas: 12, precio: 1234500, importe: 14814000 }],
+});
+comprobar(
+  "una descripcion larga se parte en renglones y no se sale del rollo",
+  renglonesDe(largo).every((r) => r.length <= escpos.COLUMNAS)
+);
+
 // --- Recoger -----------------------------------------------------------
 db.close();
 try {

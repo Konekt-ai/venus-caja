@@ -3,6 +3,10 @@
 import { useEffect, useRef } from "react";
 import { Boton } from "@/components/ui";
 import { IconoImprimir } from "@/components/iconos";
+import { ticketEscPos } from "@/lib/escpos";
+import { comoImprime, imprimirConRawBT } from "@/lib/rawbt";
+import { anchoRollo } from "@/lib/rollo";
+import { CSS_ROLLO_58, type TicketVenta } from "@/lib/ticket";
 
 /**
  * Imprimir el ticket.
@@ -44,13 +48,36 @@ function imprimirEnHoja(): void {
   window.print();
 }
 
-export function BotonImprimir() {
+/**
+ * En el SUNMI (impresora por RawBT) el ticket no se imprime como pagina:
+ * se arma con los datos de la venta y se le pasa a RawBT.
+ */
+export function BotonImprimir({ datos }: { datos?: TicketVenta }) {
+  const imprimir = () => {
+    if (datos && comoImprime() === "rawbt") imprimirConRawBT(ticketEscPos(datos));
+    else window.print();
+  };
   return (
-    <Boton variante="primario" tamano="grande" onClick={() => window.print()}>
+    <Boton variante="primario" tamano="grande" onClick={imprimir}>
       <IconoImprimir />
       Imprimir ticket
     </Boton>
   );
+}
+
+/**
+ * Si este equipo tiene rollo de 58mm (el SUNMI), acomoda el ticket a ese
+ * ancho cuando la pagina se abre a mano para verlo o reimprimirlo.
+ */
+export function EstiloDelRollo() {
+  useEffect(() => {
+    if (anchoRollo() !== 58) return;
+    const estilo = document.createElement("style");
+    estilo.textContent = CSS_ROLLO_58;
+    document.head.appendChild(estilo);
+    return () => estilo.remove();
+  }, []);
+  return null;
 }
 
 export function BotonImprimirHoja() {

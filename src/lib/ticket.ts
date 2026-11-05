@@ -95,15 +95,13 @@ export const CSS_TICKET = `/* ==================================================
    no alcanza. Por eso el ticket mide 80mm de ancho con 4mm de relleno a cada
    lado: el texto vive dentro de los 72mm que si salen.
 
-   SI LA TIENDA COMPRA UNA DE 58mm
-   Se cambian cuatro cosas y nada mas:
-     1. @page  ->  size: 58mm auto;
-     2. .ticket -> width: 58mm; padding: 3mm;  (quedan 52mm utiles)
-     3. .ticket -> font-size: 10.5px;  si no, las lineas de importes se
-        parten en dos renglones y el ticket se ve roto.
-     4. .ticket-negocio -> font-size: 1.15rem;  el nombre ya no cabe a 1.5.
-   Lo demas (columnas, reglas, totales) se acomoda solo porque todo va en
-   porcentaje o en flex, no en anchos fijos.
+   ROLLO DE 58mm (el SUNMI del tianguis)
+   Lo acomoda CSS_ROLLO_58, mas abajo, que se agrega al final cuando el
+   equipo dice que su rollo es de 58mm. Cambia cuatro cosas: la hoja, el
+   ancho con su relleno (quedan 52mm utiles), la letra a 10.5px (si no, las
+   lineas de importes se parten en dos) y el nombre de la tienda. Lo demas
+   (columnas, reglas, totales) se acomoda solo porque todo va en porcentaje
+   o en flex, no en anchos fijos.
 
    COLOR
    La termica no tiene grises ni colores: quema el papel o no lo quema. Un
@@ -513,10 +511,24 @@ export function armarTicketHtml(datos: TicketVenta): string {
 </article>`;
 }
 
+/**
+ * El ticket para rollo de 58mm. Va despues de CSS_TICKET y le gana por
+ * orden: @page no se puede condicionar con una clase.
+ */
+export const CSS_ROLLO_58 = `
+@page { size: 58mm auto; margin: 0; }
+.ticket { width: 58mm; padding: 3mm; font-size: 10.5px; }
+.ticket-negocio { font-size: 1.15rem; }
+.ticket-dato-nombre { width: 13mm; }
+.ticket-firma img { width: 15mm; }
+.ticket-total { font-size: 1.15rem; }
+@media print { .ticket { padding: 3mm; } }
+`;
+
 /** El documento completo, listo para meterse en un marco oculto e imprimirse. */
-export function documentoTicket(datos: TicketVenta): string {
+export function documentoTicket(datos: TicketVenta, rollo: 80 | 58 = 80): string {
   return `<!doctype html><html lang="es-MX"><head><meta charset="utf-8" />
 <title>Ticket ${escapar(datos.venta.folio)}</title>
-<style>${CSS_TICKET}</style>
+<style>${CSS_TICKET}${rollo === 58 ? CSS_ROLLO_58 : ""}</style>
 </head><body>${armarTicketHtml(datos)}</body></html>`;
 }

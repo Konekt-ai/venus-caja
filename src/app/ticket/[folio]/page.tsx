@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import { BotonImprimir, BotonImprimirHoja, ImpresionAutomatica } from "@/components/BotonImprimir";
+import { BotonImprimir, BotonImprimirHoja, EstiloDelRollo, ImpresionAutomatica } from "@/components/BotonImprimir";
 import { IconoVolver } from "@/components/iconos";
 import { BotonEnlace, Tarjeta } from "@/components/ui";
 import { obtenerVenta } from "@/lib/consultas";
-import { armarTicketHtml, CSS_TICKET } from "@/lib/ticket";
+import { armarTicketHtml, CSS_ROLLO_58, CSS_TICKET } from "@/lib/ticket";
 
 /**
  * El ticket de una venta.
@@ -61,10 +61,15 @@ export default async function PaginaTicket({ params, searchParams }: Props) {
   }
 
   const automatico = consulta.imprimir === "1";
+  // El equipo que reimprime dice de que ancho es su rollo (el SUNMI, 58mm).
+  // Va en la direccion y no se adivina en la pantalla: el ticket se imprime
+  // solo en cuanto carga, y tiene que salir ya acomodado.
+  const rollo58 = consulta.rollo === "58";
 
   return (
     <main className="px-4 py-6">
-      <style dangerouslySetInnerHTML={{ __html: CSS_TICKET }} />
+      <style dangerouslySetInnerHTML={{ __html: CSS_TICKET + (rollo58 ? CSS_ROLLO_58 : "") }} />
+      {rollo58 ? null : <EstiloDelRollo />}
       <ImpresionAutomatica activa={automatico} folio={venta.venta.folio} />
 
       <div className="no-imprimir mx-auto mb-6 flex max-w-lg flex-wrap items-center justify-center gap-3">
@@ -72,7 +77,7 @@ export default async function PaginaTicket({ params, searchParams }: Props) {
           <IconoVolver />
           Volver a cobrar
         </BotonEnlace>
-        <BotonImprimir />
+        <BotonImprimir datos={venta} />
         <BotonImprimirHoja />
       </div>
 

@@ -5,6 +5,8 @@ import { cancelar } from "@/acciones/ventas";
 import type { VentaResumen } from "@/lib/consultas";
 import { pesos } from "@/lib/dinero";
 import { imprimirDireccion } from "@/lib/imprimir";
+import { comoImprime, reimprimirConRawBT } from "@/lib/rawbt";
+import { anchoRollo } from "@/lib/rollo";
 import { NOMBRE_FORMA_PAGO, type FormaPago } from "@/lib/tipos";
 import { Aviso, Boton, Insignia, Vacio } from "./ui";
 import { IconoImprimir, IconoTicket } from "./iconos";
@@ -27,6 +29,18 @@ export default function ListaVentas({ ventas, puedeCancelar }: { ventas: VentaRe
         setAviso({ tipo: "error", texto: resultado.error });
       }
     });
+  };
+
+  // Reimprimir: por el navegador en la tienda, por RawBT en el SUNMI.
+  const reimprimir = (folio: string) => {
+    if (comoImprime() === "rawbt") {
+      void reimprimirConRawBT(folio).then((error) => {
+        if (error) setAviso({ tipo: "error", texto: error });
+      });
+      return;
+    }
+    const rollo = anchoRollo();
+    imprimirDireccion(`/ticket/${folio}?imprimir=1${rollo === 58 ? "&rollo=58" : ""}`, rollo);
   };
 
   if (ventas.length === 0) {
@@ -77,7 +91,7 @@ export default function ListaVentas({ ventas, puedeCancelar }: { ventas: VentaRe
                 </span>
               </div>
               <div className="mt-2 flex gap-2">
-                <Boton className="flex-1" onClick={() => imprimirDireccion(`/ticket/${venta.folio}?imprimir=1`)}>
+                <Boton className="flex-1" onClick={() => reimprimir(venta.folio)}>
                   <IconoImprimir tamano={15} />
                   Ticket
                 </Boton>
@@ -142,7 +156,7 @@ export default function ListaVentas({ ventas, puedeCancelar }: { ventas: VentaRe
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-2">
-                      <Boton onClick={() => imprimirDireccion(`/ticket/${venta.folio}?imprimir=1`)}>
+                      <Boton onClick={() => reimprimir(venta.folio)}>
                         <IconoImprimir tamano={15} />
                         Ticket
                       </Boton>

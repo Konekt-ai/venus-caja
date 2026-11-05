@@ -25,7 +25,10 @@ import { buscar, hayEmpate, partirCantidad } from "@/lib/busqueda";
 import { aCentavos, pesos } from "@/lib/dinero";
 import type { Lugar } from "@/lib/lugar";
 import { imprimirDocumento } from "@/lib/imprimir";
-import { documentoTicket } from "@/lib/ticket";
+import { ticketEscPos } from "@/lib/escpos";
+import { comoImprime, imprimirConRawBT } from "@/lib/rawbt";
+import { anchoRollo } from "@/lib/rollo";
+import { documentoTicket, type TicketVenta } from "@/lib/ticket";
 import {
   FORMAS_PAGO,
   NOMBRE_FORMA_PAGO,
@@ -43,6 +46,7 @@ import {
   IconoCerrar,
   IconoEfectivo,
   IconoEspera,
+  IconoImprimir,
   IconoMenos,
   IconoMas,
   IconoCandado,
@@ -440,39 +444,47 @@ export default function Cobrar({
 
       // Primero el papel y el registro local: la clienta se va con su ticket
       // aunque el servidor no conteste. La subida va detras.
-      imprimirDocumento(
-        documentoTicket({
-          venta: {
-            folio,
-            fecha: fechaLocal().replace("T", " "),
-            vendedora: quien.nombre,
-            subtotal,
-            descuento,
-            total,
-            piezas,
-            estado: "cobrada",
-            motivo_cancelacion: "",
-            nota: "",
+      const datosTicket: TicketVenta = {
+        venta: {
+          folio,
+          fecha: fechaLocal().replace("T", " "),
+          vendedora: quien.nombre,
+          subtotal,
+          descuento,
+          total,
+          piezas,
+          estado: "cobrada",
+          motivo_cancelacion: "",
+          nota: "",
+        },
+        lineas: lineas.map((l) => ({
+          codigo: l.codigo,
+          descripcion: l.descripcion,
+          piezas: l.piezas,
+          precio: l.precio,
+          importe: l.precio * l.piezas,
+        })),
+        pagos: [
+          {
+            forma,
+            monto: total,
+            recibido: forma === "efectivo" ? recibido : total,
+            cambio,
           },
-          lineas: lineas.map((l) => ({
-            codigo: l.codigo,
-            descripcion: l.descripcion,
-            piezas: l.piezas,
-            precio: l.precio,
-            importe: l.precio * l.piezas,
-          })),
-          pagos: [
-            {
-              forma,
-              monto: total,
-              recibido: forma === "efectivo" ? recibido : total,
-              cambio,
-            },
-          ],
-        })
-      );
+        ],
+      };
+
+      // El SUNMI imprime por RawBT; la tienda, por el navegador. Por RawBT
+      // se manda despues de anotar la venta: abrir RawBT saca a Android de
+      // la caja un instante, y la venta tiene que quedar guardada antes.
+      const porRawBT = comoImprime() === "rawbt";
+      if (!porRawBT) {
+        const rollo = anchoRollo();
+        imprimirDocumento(documentoTicket(datosTicket, rollo), rollo);
+      }
 
       encolar(venta);
+      if (porRawBT) imprimirConRawBT(ticketEscPos(datosTicket));
       setPendientes(cola().length);
 
       // La existencia de la copia local baja tambien, para que la pantalla
@@ -725,6 +737,14 @@ export default function Cobrar({
                 >
                   <IconoEspera tamano={16} />
                   Ventas del dia y corte
+                </button>
+                <button
+                  type="button"
+                  onClick={() => router.push("/impresora")}
+                  className="mb-2 flex w-full items-center gap-2 rounded-sm border border-linea-fuerte px-3 py-3 text-sm font-semibold text-tinta hover:border-oro"
+                >
+                  <IconoImprimir tamano={16} />
+                  Impresora de este equipo
                 </button>
                 <form action={salir}>
                   <button
