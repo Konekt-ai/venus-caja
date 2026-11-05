@@ -703,6 +703,17 @@ export default function Cobrar({
               <span className="hidden sm:inline">Sin conexion</span>
             </Insignia>
           ) : null}
+          {/* En el tianguis, lo que entra y sale de la bodega va en su propia
+              pantalla, aparte de cobrar. */}
+          {lugar === "tianguis" ? (
+            <button
+              type="button"
+              onClick={() => router.push("/inventario")}
+              className="rounded-sm border border-linea-fuerte bg-papel px-3 py-2 text-sm font-semibold text-tinta hover:border-oro hover:bg-oro-tenue sm:py-1.5"
+            >
+              Inventario
+            </button>
+          ) : null}
           {/* El nombre es el boton: es donde la vendedora ya esta mirando
               cuando quiere entregar el turno. */}
           <div className="relative">

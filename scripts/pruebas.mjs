@@ -974,22 +974,38 @@ iguales("Ventas del dia del tianguis trae solo lo suyo", ventasDelDia(HOY, "T1")
 db.prepare(
   "INSERT INTO caja_config (clave, valor) VALUES ('bloquear_sin_existencia', '1') ON CONFLICT(clave) DO UPDATE SET valor = '1'"
 ).run();
+const bodegaAntesDeFaltar = existenciaDe(C.id);
 const rSinPiezas = registrarVenta({
   ...venta({ id: "prueba-tianguis-2", lineas: [linea(C, 4, 35000)], forma_pago: "tarjeta" }),
   caja: "T1",
 });
 comprobar("en el tianguis se vende aunque el sistema diga que no hay", rSinPiezas.ok === true, rSinPiezas.ok ? "" : rSinPiezas.error);
 comprobar(
-  "y avisa que en el tianguis no habia",
-  rSinPiezas.ok && rSinPiezas.datos.avisos.some((a) => a.includes("el tianguis")),
+  "y avisa que se tomo de bodega lo que no estaba en el tianguis",
+  rSinPiezas.ok && rSinPiezas.datos.avisos.some((a) => a.includes("se tomaron 3 de bodega")),
   rSinPiezas.ok ? JSON.stringify(rSinPiezas.datos.avisos) : ""
 );
-iguales("la cuenta del tianguis queda en negativo, para cuadrarla despues", enTianguis(C.id), -3);
+iguales("el tianguis no queda en negativo: queda en cero", enTianguis(C.id), 0);
+iguales("lo que faltaba se descuenta de la bodega", existenciaDe(C.id), bodegaAntesDeFaltar - 3);
+iguales(
+  "y queda en la bodega como la salida al tianguis que no se registro",
+  db
+    .prepare("SELECT tipo, cantidad, existencia_antes, existencia_despues FROM movimientos WHERE nota LIKE ?")
+    .get(`%sin registro de salida (${rSinPiezas.ok ? rSinPiezas.datos.folio : ""})%`),
+  { tipo: "salida_tianguis", cantidad: 3, existencia_antes: bodegaAntesDeFaltar, existencia_despues: bodegaAntesDeFaltar - 3 }
+);
+iguales(
+  "la venta queda con el tianguis de 4 a 0",
+  db
+    .prepare("SELECT existencia_antes, existencia_despues FROM movimientos WHERE tipo = 'venta_tianguis' AND nota = ?")
+    .get(`Venta ${rSinPiezas.ok ? rSinPiezas.datos.folio : ""}`),
+  { existencia_antes: 4, existencia_despues: 0 }
+);
 db.prepare("UPDATE caja_config SET valor = '0' WHERE clave = 'bloquear_sin_existencia'").run();
 
 const cT = cancelarVenta("prueba-tianguis-2", "prueba", "TIANGUIS");
 comprobar("se cancela un ticket del tianguis", cT.ok === true, cT.ok ? "" : cT.error);
-iguales("las piezas regresan al tianguis", enTianguis(C.id), 1);
+iguales("las piezas regresan al tianguis", enTianguis(C.id), 4);
 comprobar(
   "y queda como cancelacion del tianguis",
   Boolean(db.prepare("SELECT 1 FROM movimientos WHERE tipo = 'cancelacion_tianguis' AND nota LIKE ?").get(`%${rSinPiezas.ok ? rSinPiezas.datos.folio : ""}%`))
@@ -1002,7 +1018,7 @@ const rSubida = registrarVenta(
 );
 comprobar(
   "una venta del tianguis cae en el tianguis aunque la suba la tienda",
-  rSubida.ok && rSubida.datos.folio.startsWith("T1-") && enTianguis(C.id) === 0
+  rSubida.ok && rSubida.datos.folio.startsWith("T1-") && enTianguis(C.id) === 3
 );
 const rRara = registrarVenta(
   { ...venta({ id: "prueba-caja-rara", lineas: [linea(D, 1, 35000)], forma_pago: "tarjeta" }), caja: "X9" },
@@ -1098,6 +1114,62 @@ comprobar(
   "una descripcion larga se parte en renglones y no se sale del rollo",
   renglonesDe(largo).every((r) => r.length <= escpos.COLUMNAS)
 );
+
+// =======================================================================
+seccion("17. Entradas y salidas del tianguis desde la caja");
+// =======================================================================
+const mov = await import(pathToFileURL(path.join(RAIZ, "src", "lib", "movimientosTianguis.ts")).href);
+
+// La bodega ya iba en la hoja 5: la caja sigue el mismo contador.
+db.prepare(
+  "INSERT INTO config (clave, valor) VALUES ('folio_tianguis', '5') ON CONFLICT(clave) DO UPDATE SET valor = '5'"
+).run();
+db.prepare("UPDATE modelos SET existencia = 10, en_tianguis = 0 WHERE id = ?").run(A.id);
+db.prepare("UPDATE modelos SET existencia = 1, en_tianguis = 0 WHERE id = ?").run(B.id);
+
+const recibido = mov.recibirDeBodega(
+  [
+    { modelo_id: A.id, piezas: 4 },
+    { modelo_id: B.id, piezas: 3 },
+    { modelo_id: A.id, piezas: 1 },
+  ],
+  "TIANGUIS"
+);
+comprobar("se registra lo recibido de bodega", recibido.ok === true, recibido.ok ? "" : recibido.error);
+iguales("con el siguiente folio de la bodega", recibido.ok && recibido.datos.folio, "TIA-0006");
+iguales("el mismo modelo dos veces se junta", [existenciaDe(A.id), enTianguis(A.id)], [5, 5]);
+iguales("si la bodega no tenia, se recibe igual y queda en negativo", [existenciaDe(B.id), enTianguis(B.id)], [-2, 3]);
+comprobar(
+  "y avisa cual quedo en negativo en bodega",
+  recibido.ok && recibido.datos.avisos.length === 1 && recibido.datos.avisos[0].startsWith(B.codigo),
+  recibido.ok ? JSON.stringify(recibido.datos.avisos) : ""
+);
+const hoja = db.prepare("SELECT * FROM remisiones WHERE folio = 'TIA-0006'").get();
+comprobar(
+  "queda la hoja como un envio al tianguis, firmada por TIANGUIS",
+  hoja && hoja.destino === "TIANGUIS" && hoja.tipo === "envio" && hoja.total_piezas === 8 && hoja.persona === "TIANGUIS",
+  JSON.stringify(hoja)
+);
+iguales(
+  "cada modelo queda como salida al tianguis de esa hoja",
+  db.prepare("SELECT COUNT(*) AS n FROM movimientos WHERE remision_id = ? AND tipo = 'salida_tianguis'").get(hoja.id).n,
+  2
+);
+
+const deMas = mov.regresarDelTianguis([{ modelo_id: B.id, piezas: 9 }], "TIANGUIS");
+comprobar("no se regresa mas de lo que hay en el tianguis", deMas.ok === false);
+iguales("y no se movio nada", [existenciaDe(B.id), enTianguis(B.id)], [-2, 3]);
+iguales("ni se gasto un folio", db.prepare("SELECT valor FROM config WHERE clave = 'folio_tianguis'").get().valor, "6");
+
+const regreso = mov.regresarDelTianguis([{ modelo_id: B.id, piezas: 1 }], "TIANGUIS");
+comprobar("se regresa a bodega con su hoja", regreso.ok && regreso.datos.folio === "TIA-0007");
+iguales("baja el tianguis y sube la bodega", [existenciaDe(B.id), enTianguis(B.id)], [-1, 2]);
+
+const cierre = mov.cerrarElDia("TIANGUIS");
+comprobar("el cierre regresa todo lo que quedo, en una hoja", cierre.ok && cierre.datos.folio === "TIA-0008");
+iguales("el tianguis queda vacio", db.prepare("SELECT COALESCE(SUM(en_tianguis), 0) AS n FROM modelos WHERE en_tianguis > 0").get().n, 0);
+iguales("y la bodega recupera esas piezas", [existenciaDe(A.id), existenciaDe(B.id)], [10, 1]);
+comprobar("cerrar otra vez avisa que no hay nada", mov.cerrarElDia("TIANGUIS").ok === false);
 
 // --- Recoger -----------------------------------------------------------
 db.close();

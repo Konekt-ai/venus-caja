@@ -140,15 +140,31 @@ TIANGUIS** (el duenio lo pone en **Vendedoras**). Con esa cuenta la caja:
 - deja en la bodega el movimiento `venta_tianguis`, el mismo que cuando se
   vende desde el celular, y en la bodega esas ventas cuentan como del
   tianguis;
-- **vende aunque el sistema diga que no hay piezas** en el tianguis: la
-  venta queda marcada y la cuenta se cuadra despues. El candado de Ajustes
-  es solo de la tienda.
+- **vende aunque el sistema diga que no hay piezas** en el tianguis. Si
+  pasa, es que la prenda si salio de bodega pero no se registro: la caja
+  registra esa salida en ese momento (baja la bodega, sube el tianguis) y
+  luego la venta, asi el tianguis nunca queda en negativo. El candado de
+  Ajustes es solo de la tienda.
 
 Todo lo demas es igual: se elige quien vendio, varias prendas por ticket,
 descuentos, precio de una sola venta y sigue cobrando sin senal.
 
-Las entradas y salidas entre la bodega y el tianguis se siguen haciendo en el
-sistema de bodega (Salidas, "A tianguis" y el Cierre del tianguis).
+### Inventario del tianguis
+
+Con la cuenta TIANGUIS, arriba junto al nombre esta el boton **Inventario**.
+Abre una pantalla aparte (para no llenar la de cobrar) con tres pestanas:
+
+- **Recibir**: se escanea lo que llego de la bodega (la misma prenda otra
+  vez suma una pieza) y se registra. Baja la bodega y sube el tianguis. Si
+  la bodega no tenia esas piezas registradas se recibe igual: queda en
+  negativo y se cuadra en el conteo.
+- **Regresar**: lo que vuelve a la bodega, escaneado o con las piezas de la
+  lista. No deja regresar mas de lo que hay en el tianguis.
+- **Cierre del dia**: todo lo que quedo regresa a la bodega de un jalon.
+
+Cada uno deja su hoja con folio (`TIA-0001`), del mismo contador y con los
+mismos movimientos que Salidas y el Cierre del sistema de bodega, firmada
+por TIANGUIS. Desde la bodega se siguen pudiendo hacer igual.
 
 ### En el telefono
 

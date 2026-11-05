@@ -2,6 +2,7 @@ import "server-only";
 import type Database from "better-sqlite3";
 import { claveFondo, esCajaConocida, getDb, leerAjuste, nombreCaja } from "./db";
 import { EL_LUGAR, lugarDeCaja, type Lugar } from "./lugar";
+import { pasarDeBodegaAlTianguis } from "./movimientosTianguis";
 import { repartirDescuento } from "./dinero";
 import type { Resultado, VentaParaGuardar } from "./tipos";
 import { FORMAS_PAGO } from "./tipos";
@@ -282,6 +283,8 @@ export function registrarVenta(venta: VentaParaGuardar, cajaPorOmision = nombreC
         if (!modelo) throw new ErrorDeVenta(`Ya no existe el modelo ${linea.codigo} en el catalogo.`);
 
         const faltan = linea.piezas - modelo.piezas;
+        // Lo que habia en el lugar justo antes de la venta, para el historial.
+        let piezasAntes = modelo.piezas;
         if (faltan > 0) {
           // Hoy la bodega todavia no registra los envios a la tienda, asi que
           // casi todo esta en cero. Detener la venta por eso seria perderla:
@@ -293,9 +296,25 @@ export function registrarVenta(venta: VentaParaGuardar, cajaPorOmision = nombreC
                 `${modelo.piezas === 1 ? "pieza" : "piezas"} en ${EL_LUGAR[lugar]}.`
             );
           }
-          avisos.push(
-            `${modelo.codigo}: se vendieron ${linea.piezas} y en el sistema habia ${modelo.piezas} en ${EL_LUGAR[lugar]}.`
-          );
+          if (lugar === "tianguis") {
+            // En el tianguis, si se vendio lo que el sistema no tenia ahi es
+            // que la prenda si salio de bodega pero no se registro. Se
+            // registra ahora esa salida (baja la bodega, sube el tianguis) y
+            // despues la venta, en vez de dejar el tianguis en negativo.
+            pasarDeBodegaAlTianguis(db, {
+              modeloId: modelo.id,
+              piezas: faltan,
+              persona: cobro || vendedora.nombre,
+              nota: `Se vendio en el tianguis sin registro de salida (${folio}): se toma de bodega`,
+              fecha,
+            });
+            piezasAntes = modelo.piezas + faltan;
+            avisos.push(`${modelo.codigo}: no estaba registrado en el tianguis; se tomaron ${faltan} de bodega.`);
+          } else {
+            avisos.push(
+              `${modelo.codigo}: se vendieron ${linea.piezas} y en el sistema habia ${modelo.piezas} en ${EL_LUGAR[lugar]}.`
+            );
+          }
         }
 
         insertarLinea.run(
@@ -317,6 +336,8 @@ export function registrarVenta(venta: VentaParaGuardar, cajaPorOmision = nombreC
         // Solo baja lo que hay en el lugar donde se cobro. La existencia de
         // bodega no se toca: esa pieza salio del rack cuando se hizo el envio,
         // sumarla o restarla aqui la reviviria o la desapareceria del rack.
+        // (Lo que faltaba en el tianguis ya se tomo de bodega arriba, como
+        // el envio que no se registro.)
         bajarPiezas.run(linea.piezas, modelo.id);
 
         // El rastro que ve la bodega. En la tienda 'existencia_antes' y
@@ -327,8 +348,8 @@ export function registrarVenta(venta: VentaParaGuardar, cajaPorOmision = nombreC
           modelo.id,
           reglas.venta,
           linea.piezas,
-          reglas.conBodega ? modelo.existencia : modelo.piezas,
-          reglas.conBodega ? modelo.existencia : modelo.piezas - linea.piezas,
+          reglas.conBodega ? modelo.existencia : piezasAntes,
+          reglas.conBodega ? modelo.existencia : piezasAntes - linea.piezas,
           vendedora.nombre,
           `Venta ${folio}`,
           fecha
