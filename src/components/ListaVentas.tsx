@@ -43,7 +43,56 @@ export default function ListaVentas({ ventas, puedeCancelar }: { ventas: VentaRe
     <div className="space-y-4">
       {aviso ? <Aviso tipo={aviso.tipo === "ok" ? "ok" : "error"}>{aviso.texto}</Aviso> : null}
 
-      <div className="overflow-hidden rounded-sm border border-linea bg-papel">
+      {/* En el telefono (el SUNMI del tianguis) la tabla no cabe: cada venta
+          va como tarjeta, con sus botones a la mano. */}
+      <ul className="space-y-2 sm:hidden">
+        {ventas.map((venta) => {
+          const cancelada = venta.estado === "cancelada";
+          return (
+            <li key={venta.id} className="rounded-sm border border-linea bg-papel px-3 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="codigo text-sm">
+                    {venta.folio}
+                    {cancelada ? (
+                      <span className="ml-2">
+                        <Insignia tono="alto">Cancelada</Insignia>
+                      </span>
+                    ) : null}
+                  </p>
+                  <p className="mt-0.5 text-xs text-humo">
+                    {venta.fecha.slice(11, 16)} · {venta.vendedora}
+                    {venta.cobro && venta.cobro !== venta.vendedora ? ` (cobro ${venta.cobro})` : ""}
+                  </p>
+                  <p className="text-xs text-humo">
+                    {venta.piezas} {venta.piezas === 1 ? "pieza" : "piezas"} ·{" "}
+                    {venta.formas
+                      .split(", ")
+                      .map((f) => NOMBRE_FORMA_PAGO[f as FormaPago] ?? f)
+                      .join(", ")}
+                  </p>
+                </div>
+                <span className={`cifra shrink-0 text-base font-semibold ${cancelada ? "text-humo line-through" : ""}`}>
+                  {pesos(venta.total)}
+                </span>
+              </div>
+              <div className="mt-2 flex gap-2">
+                <Boton className="flex-1" onClick={() => imprimirDireccion(`/ticket/${venta.folio}?imprimir=1`)}>
+                  <IconoImprimir tamano={15} />
+                  Ticket
+                </Boton>
+                {puedeCancelar && !cancelada ? (
+                  <Boton variante="peligro" className="flex-1" onClick={() => setCancelando(venta.id)}>
+                    Cancelar
+                  </Boton>
+                ) : null}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+
+      <div className="hidden overflow-hidden rounded-sm border border-linea bg-papel sm:block">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-linea-fuerte text-left">
@@ -116,8 +165,8 @@ export default function ListaVentas({ ventas, puedeCancelar }: { ventas: VentaRe
           <div className="w-full max-w-md rounded-sm border border-linea-fuerte bg-papel p-5">
             <h2 className="titulo mb-2 text-xl">Cancelar el ticket</h2>
             <p className="mb-4 text-sm text-humo">
-              La venta no se borra: queda marcada como cancelada y las piezas regresan al inventario de la
-              tienda.
+              La venta no se borra: queda marcada como cancelada y las piezas regresan a donde se vendio (la
+              tienda o el tianguis).
             </p>
             <label className="etiqueta" htmlFor="motivo">
               Por que se cancela

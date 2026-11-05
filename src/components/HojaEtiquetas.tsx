@@ -114,7 +114,7 @@ export default function HojaEtiquetas({ catalogo }: { catalogo: ModeloCaja[] }):
       const ya = antes.some((r) => r.modelo.id === modelo.id);
       if (ya) return antes.map((r) => (r.modelo.id === modelo.id ? { ...r, cantidad: r.cantidad + 1 } : r));
       // Se propone una etiqueta por pieza en tienda: es lo que casi siempre se quiere.
-      return [...antes, { modelo, cantidad: Math.max(1, Math.min(99, modelo.en_tienda)) }];
+      return [...antes, { modelo, cantidad: Math.max(1, Math.min(99, modelo.piezas)) }];
     });
   }
 
@@ -130,7 +130,7 @@ export default function HojaEtiquetas({ catalogo }: { catalogo: ModeloCaja[] }):
   function todoLoDeTienda() {
     const nuevos: Renglon[] = [];
     for (const modelo of catalogo) {
-      if (modelo.en_tienda > 0) nuevos.push({ modelo, cantidad: Math.min(999, modelo.en_tienda) });
+      if (modelo.piezas > 0) nuevos.push({ modelo, cantidad: Math.min(999, modelo.piezas) });
     }
     setRenglones(nuevos);
   }
@@ -195,7 +195,7 @@ export default function HojaEtiquetas({ catalogo }: { catalogo: ModeloCaja[] }):
                   >
                     <span className="codigo w-24 shrink-0">{formatearCodigo(modelo.codigo)}</span>
                     <span className="min-w-0 flex-1 truncate text-sm">{modelo.descripcion}</span>
-                    <span className="shrink-0 text-xs text-humo">{modelo.en_tienda} en tienda</span>
+                    <span className="shrink-0 text-xs text-humo">{modelo.piezas} en tienda</span>
                     <span className="shrink-0 text-oro">
                       <IconoMas tamano={18} />
                     </span>

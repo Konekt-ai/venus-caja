@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
 import { ESQUEMA_CAJA } from "./esquema";
+import type { Lugar } from "./lugar";
 
 /**
  * La caja escribe en la MISMA base que el sistema de bodega.
@@ -93,6 +94,10 @@ function columnasNuevas(db: Database.Database): void {
   if (!tiene("caja_ventas", "cobro")) {
     db.exec("ALTER TABLE caja_ventas ADD COLUMN cobro TEXT NOT NULL DEFAULT ''");
   }
+  // Las que ya estaban vendian en la tienda: la columna nace en 'tienda'.
+  if (!tiene("caja_vendedoras", "vende_en")) {
+    db.exec("ALTER TABLE caja_vendedoras ADD COLUMN vende_en TEXT NOT NULL DEFAULT 'tienda'");
+  }
 }
 
 export function getDb(): Database.Database {
@@ -121,4 +126,32 @@ export function guardarAjuste(clave: string, valor: string): void {
 /** Nombre de esta caja: sale en el ticket y encabeza el folio (C1-000123). */
 export function nombreCaja(): string {
   return (process.env.VENUS_CAJA || "C1").trim().toUpperCase();
+}
+
+/**
+ * Nombre de la caja del tianguis (T1-000123). Tiene que empezar con T: es
+ * lo que la distingue de la tienda (ver lugarDeCaja).
+ */
+export function nombreCajaTianguis(): string {
+  const nombre = (process.env.VENUS_CAJA_TIANGUIS || "T1").trim().toUpperCase();
+  return nombre.startsWith("T") ? nombre : `T${nombre}`;
+}
+
+/** La caja con la que se cobra en cada lugar. */
+export function cajaDeLugar(lugar: Lugar): string {
+  return lugar === "tianguis" ? nombreCajaTianguis() : nombreCaja();
+}
+
+/**
+ * Donde se guarda el fondo con el que abre cada caja. La de la tienda usa la
+ * clave de siempre, para no perder el que ya estaba capturado.
+ */
+export function claveFondo(caja: string): string {
+  return caja === nombreCaja() ? "fondo_inicial" : `fondo_inicial_${caja}`;
+}
+
+/** true si es el nombre de una de las cajas de esta instalacion. */
+export function esCajaConocida(caja: string): boolean {
+  const limpia = caja.trim().toUpperCase();
+  return limpia === nombreCaja() || limpia === nombreCajaTianguis();
 }

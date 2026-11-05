@@ -23,6 +23,7 @@ import {
 } from "@/lib/almacen";
 import { buscar, hayEmpate, partirCantidad } from "@/lib/busqueda";
 import { aCentavos, pesos } from "@/lib/dinero";
+import type { Lugar } from "@/lib/lugar";
 import { imprimirDocumento } from "@/lib/imprimir";
 import { documentoTicket } from "@/lib/ticket";
 import {
@@ -71,6 +72,8 @@ type Props = {
   /** Con que cuenta se entro: una vendedora o VENTAS (la de todas). */
   cuenta: { id: number; nombre: string };
   caja: string;
+  /** Donde se cobra: de ahi salen las piezas que se descuentan. */
+  lugar: Lugar;
   negocio: string;
   ultimoFolio: number;
 };
@@ -87,7 +90,15 @@ function fechaLocal(): string {
   );
 }
 
-export default function Cobrar({ catalogoInicial, vendedorasIniciales, cuenta, caja, negocio, ultimoFolio }: Props) {
+export default function Cobrar({
+  catalogoInicial,
+  vendedorasIniciales,
+  cuenta,
+  caja,
+  lugar,
+  negocio,
+  ultimoFolio,
+}: Props) {
   const [catalogo, setCatalogo] = useState<ModeloCaja[]>(catalogoInicial);
   const [vendedoras, setVendedoras] = useState<QuienVende[]>(vendedorasIniciales);
   // Quien hizo la venta que se esta cobrando. Si se entro con el PIN de una
@@ -115,6 +126,10 @@ export default function Cobrar({ catalogoInicial, vendedorasIniciales, cuenta, c
   const [pendientes, setPendientes] = useState(0);
   const [enLinea, setEnLinea] = useState(true);
   const [menuVendedora, setMenuVendedora] = useState(false);
+  // Pantalla tactil (el SUNMI del tianguis, un telefono): el buscador no saca
+  // el teclado del telefono salvo que se pida con el boton Teclado.
+  const [tactil, setTactil] = useState(false);
+  const [teclado, setTeclado] = useState(false);
 
   const buscador = useRef<HTMLInputElement>(null);
   const router = useRouter();
@@ -128,23 +143,23 @@ export default function Cobrar({ catalogoInicial, vendedorasIniciales, cuenta, c
   // --- Arranque -----------------------------------------------------------
   useEffect(() => {
     if (vendedorasIniciales.length > 0) {
-      guardarVendedoras(vendedorasIniciales);
+      guardarVendedoras(vendedorasIniciales, lugar);
     } else {
-      const copia = vendedorasGuardadas();
+      const copia = vendedorasGuardadas(lugar);
       if (copia.length > 0) setVendedoras(copia);
     }
 
     if (catalogoInicial.length > 0) {
-      guardarCatalogo(catalogoInicial);
+      guardarCatalogo(catalogoInicial, lugar);
     } else {
       // El servidor no contesto: se cobra con la copia de la ultima vez.
-      const copia = catalogoGuardado();
+      const copia = catalogoGuardado(lugar);
       if (copia.length > 0) {
         setCatalogo(copia);
         setAviso({ tipo: "info", texto: "Sin conexion: se esta usando el catalogo de la ultima vez." });
       }
     }
-    ajustarFolioLocal(ultimoFolio);
+    ajustarFolioLocal(caja, ultimoFolio);
     setEspera(ventasEnEspera());
     setPendientes(cola().length);
     setEnLinea(window.navigator.onLine);
@@ -158,6 +173,8 @@ export default function Cobrar({ catalogoInicial, vendedorasIniciales, cuenta, c
       setDescuentoTipo(aMedias.descuento_tipo as TipoDescuento);
       setDescuentoValor(aMedias.descuento_valor);
     }
+
+    setTactil(window.matchMedia?.("(pointer: coarse)").matches ?? false);
 
     yaSeRestauro.current = true;
     enfocarBuscador();
@@ -212,12 +229,12 @@ export default function Cobrar({ catalogoInicial, vendedorasIniciales, cuenta, c
       };
       // La lista de vendedoras se cambia de una vez: no hay nada a medias
       // que dependa de ella, y la que se elija al cobrar sale de aqui.
-      if (datos.ok && Array.isArray(datos.vendedoras) && datos.vendedoras.length > 0) {
-        guardarVendedoras(datos.vendedoras);
+      if (datos.ok && Array.isArray(datos.vendedoras)) {
+        guardarVendedoras(datos.vendedoras, lugar);
         setVendedoras(datos.vendedoras);
       }
       if (!datos.ok || !Array.isArray(datos.catalogo) || datos.catalogo.length === 0) return;
-      guardarCatalogo(datos.catalogo);
+      guardarCatalogo(datos.catalogo, lugar);
       catalogoNuevo.current = { catalogo: datos.catalogo, ultimo_folio: datos.ultimo_folio ?? 0 };
       setDescargas((n) => n + 1);
     } catch {
@@ -245,7 +262,7 @@ export default function Cobrar({ catalogoInicial, vendedorasIniciales, cuenta, c
     if (ocupado) return;
     catalogoNuevo.current = null;
     setCatalogo(nuevo.catalogo);
-    ajustarFolioLocal(nuevo.ultimo_folio);
+    ajustarFolioLocal(caja, nuevo.ultimo_folio);
   }, [descargas, lineas.length, pagando, pidiendoPrecio, cambiandoPrecio, pidiendoDescuento, verEspera, menuVendedora, texto, pendientes]);
 
   useEffect(() => {
@@ -318,6 +335,9 @@ export default function Cobrar({ catalogoInicial, vendedorasIniciales, cuenta, c
       });
       setTexto("");
       setAviso(null);
+      // Si se escribio a mano, ya se encontro: el teclado se guarda para
+      // que vuelva a verse la venta.
+      setTeclado(false);
       enfocarBuscador();
     },
     [enfocarBuscador]
@@ -406,6 +426,7 @@ export default function Cobrar({ catalogoInicial, vendedorasIniciales, cuenta, c
       const venta: VentaParaGuardar = {
         id: idUnico(),
         folio,
+        caja,
         vendedora_id: quien.id,
         cobro: cuenta.nombre,
         lineas,
@@ -459,7 +480,7 @@ export default function Cobrar({ catalogoInicial, vendedorasIniciales, cuenta, c
       setCatalogo((antes) =>
         antes.map((m) => {
           const vendido = lineas.filter((l) => l.modelo_id === m.id).reduce((a, l) => a + l.piezas, 0);
-          return vendido > 0 ? { ...m, en_tienda: m.en_tienda - vendido } : m;
+          return vendido > 0 ? { ...m, piezas: m.piezas - vendido } : m;
         })
       );
 
@@ -643,23 +664,31 @@ export default function Cobrar({ catalogoInicial, vendedorasIniciales, cuenta, c
     router,
   ]);
 
+  const enDonde = lugar === "tianguis" ? "tianguis" : "tienda";
+
   return (
     <div className="flex min-h-screen flex-col bg-marfil">
-      {/* Barra de arriba: quien cobra y como anda la conexion */}
-      <header className="capitone flex items-center justify-between border-b border-linea-fuerte px-4 py-2.5">
-        <div className="flex items-center gap-3">
-          <span className="marca text-xl">Venus</span>
-          <span className="etiqueta mb-0">Caja {caja}</span>
+      {/* Barra de arriba: quien cobra y como anda la conexion. En el telefono
+          se queda pegada arriba y todo va en un renglon corto. */}
+      <header className="capitone sticky top-0 z-30 flex items-center justify-between gap-2 border-b border-linea-fuerte px-3 py-2 sm:px-4 sm:py-2.5">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+          <span className="marca text-lg sm:text-xl">Venus</span>
+          <span className="etiqueta mb-0 whitespace-nowrap">
+            {lugar === "tianguis" ? "Tianguis" : "Caja"} {caja}
+          </span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           {pendientes > 0 ? (
             <Insignia tono="aviso">
-              {pendientes} {pendientes === 1 ? "venta por subir" : "ventas por subir"}
+              {pendientes}
+              <span className="hidden sm:inline">{pendientes === 1 ? " venta por subir" : " ventas por subir"}</span>
+              <span className="sm:hidden"> por subir</span>
             </Insignia>
           ) : null}
           {!enLinea ? (
             <Insignia tono="aviso">
-              <IconoSinRed tamano={14} /> Sin conexion
+              <IconoSinRed tamano={14} />
+              <span className="hidden sm:inline">Sin conexion</span>
             </Insignia>
           ) : null}
           {/* El nombre es el boton: es donde la vendedora ya esta mirando
@@ -668,11 +697,11 @@ export default function Cobrar({ catalogoInicial, vendedorasIniciales, cuenta, c
             <button
               type="button"
               onClick={() => setMenuVendedora((abierto) => !abierto)}
-              className="flex items-center gap-2 rounded-sm border border-linea-fuerte bg-papel px-3 py-1.5 text-sm font-semibold text-tinta hover:border-oro hover:bg-oro-tenue"
+              className="flex max-w-[9rem] items-center gap-2 rounded-sm border border-linea-fuerte bg-papel px-3 py-2 text-sm font-semibold text-tinta hover:border-oro hover:bg-oro-tenue sm:max-w-none sm:py-1.5"
             >
               <IconoPersona tamano={16} />
-              {cuenta.nombre}
-              <span className="text-[0.65rem] font-normal text-humo">F10</span>
+              <span className="truncate">{cuenta.nombre}</span>
+              <span className="hidden text-[0.65rem] font-normal text-humo lg:inline">F10</span>
             </button>
 
             {menuVendedora ? (
@@ -683,15 +712,24 @@ export default function Cobrar({ catalogoInicial, vendedorasIniciales, cuenta, c
                 <button
                   type="button"
                   onClick={() => router.push("/entrar")}
-                  className="mb-2 flex w-full items-center gap-2 rounded-sm bg-vino px-3 py-2.5 text-sm font-semibold text-marfil hover:bg-vino-oscuro"
+                  className="mb-2 flex w-full items-center gap-2 rounded-sm bg-vino px-3 py-3 text-sm font-semibold text-marfil hover:bg-vino-oscuro"
                 >
                   <IconoPersona tamano={16} />
                   Cambiar de vendedora
                 </button>
+                {/* Para cancelar o reimprimir un ticket y hacer el corte. */}
+                <button
+                  type="button"
+                  onClick={() => router.push("/ventas")}
+                  className="mb-2 flex w-full items-center gap-2 rounded-sm border border-linea-fuerte px-3 py-3 text-sm font-semibold text-tinta hover:border-oro"
+                >
+                  <IconoEspera tamano={16} />
+                  Ventas del dia y corte
+                </button>
                 <form action={salir}>
                   <button
                     type="submit"
-                    className="flex w-full items-center gap-2 rounded-sm border border-linea-fuerte px-3 py-2.5 text-sm font-semibold text-tinta hover:border-oro"
+                    className="flex w-full items-center gap-2 rounded-sm border border-linea-fuerte px-3 py-3 text-sm font-semibold text-tinta hover:border-oro"
                   >
                     <IconoCandado tamano={16} />
                     Cerrar la caja
@@ -703,9 +741,11 @@ export default function Cobrar({ catalogoInicial, vendedorasIniciales, cuenta, c
         </div>
       </header>
 
-      <div className="flex flex-1 flex-col gap-4 p-4 lg:flex-row">
+      {/* En el telefono abajo queda fija la barra del total y Cobrar: el pb
+          deja libre ese espacio para que la ultima prenda no quede tapada. */}
+      <div className="flex flex-1 flex-col gap-3 p-3 pb-44 sm:gap-4 sm:p-4 sm:pb-44 lg:flex-row lg:pb-4">
         {/* Izquierda: buscar y agregar */}
-        <div className="flex flex-1 flex-col gap-3">
+        <div className="flex flex-col gap-3 lg:flex-1">
           <div className="relative">
             <IconoBuscar
               tamano={22}
@@ -714,6 +754,8 @@ export default function Cobrar({ catalogoInicial, vendedorasIniciales, cuenta, c
             <input
               ref={buscador}
               className="campo campo-buscador"
+              // Inline y no con clase: .campo-buscador fija su propio relleno.
+              style={tactil ? { paddingRight: "6.5rem" } : undefined}
               value={texto}
               onChange={(e) => setTexto(e.target.value)}
               onKeyDown={(e) => {
@@ -722,12 +764,35 @@ export default function Cobrar({ catalogoInicial, vendedorasIniciales, cuenta, c
                   agregarPrimero();
                 }
               }}
-              placeholder="Codigo o descripcion de la prenda"
+              // En pantalla tactil el cursor vive aqui para que el lector
+              // escriba, pero sin sacar el teclado del telefono en cada
+              // escaneo: taparia media pantalla. Para escribir a mano esta el
+              // boton Teclado.
+              inputMode={tactil && !teclado ? "none" : "text"}
+              enterKeyHint="search"
+              placeholder={tactil ? "Escanea o busca" : "Codigo o descripcion de la prenda"}
               autoComplete="off"
               autoCorrect="off"
               spellCheck={false}
               aria-label="Buscar prenda"
             />
+            {tactil ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setTeclado((abierto) => !abierto);
+                  // El teclado solo aparece si el campo vuelve a tomar el
+                  // cursor ya con el modo nuevo.
+                  buscador.current?.blur();
+                  window.setTimeout(() => buscador.current?.focus(), 30);
+                }}
+                className={`absolute right-2 top-1/2 -translate-y-1/2 rounded-sm border px-3 py-2 text-xs font-semibold ${
+                  teclado ? "border-vino bg-vino-palido text-vino" : "border-linea-fuerte bg-papel text-humo"
+                }`}
+              >
+                Teclado
+              </button>
+            ) : null}
           </div>
 
           {cantidadTecleada > 1 ? (
@@ -744,18 +809,26 @@ export default function Cobrar({ catalogoInicial, vendedorasIniciales, cuenta, c
                     type="button"
                     onClick={() => agregar(modelo, cantidadTecleada)}
                     onMouseEnter={() => setSeleccion(i)}
-                    className={`flex w-full items-center gap-3 border-b border-linea px-4 py-3 text-left last:border-b-0 ${
+                    className={`flex w-full items-center gap-3 border-b border-linea px-3 py-3 text-left last:border-b-0 sm:px-4 ${
                       i === seleccion ? "bg-oro-tenue" : "hover:bg-crema"
                     }`}
                   >
-                    <span className="codigo w-24 shrink-0 text-base">{modelo.codigo}</span>
-                    <span className="flex-1 truncate text-sm text-tinta">{modelo.descripcion}</span>
-                    {modelo.en_tienda <= 0 ? (
-                      <Insignia tono="aviso">Sin registro en tienda</Insignia>
-                    ) : (
-                      <span className="text-xs text-humo">{modelo.en_tienda} en tienda</span>
-                    )}
-                    <span className="cifra w-28 shrink-0 text-right text-base font-semibold">
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-baseline gap-2">
+                        <span className="codigo shrink-0 text-base">{modelo.codigo}</span>
+                        <span className="truncate text-sm text-tinta">{modelo.descripcion}</span>
+                      </span>
+                      {modelo.piezas <= 0 ? (
+                        <span className="mt-1 block text-xs font-semibold text-ambar">
+                          Sin registro en {enDonde}
+                        </span>
+                      ) : (
+                        <span className="mt-0.5 block text-xs text-humo">
+                          {modelo.piezas} en {enDonde}
+                        </span>
+                      )}
+                    </span>
+                    <span className="cifra shrink-0 text-right text-base font-semibold">
                       {modelo.precio > 0 ? pesos(modelo.precio) : "Sin precio"}
                     </span>
                   </button>
@@ -785,7 +858,11 @@ export default function Cobrar({ catalogoInicial, vendedorasIniciales, cuenta, c
           <div className="flex items-center justify-between border-b border-linea px-4 py-2.5">
             <span className="etiqueta mb-0">La venta</span>
             {lineas.length ? (
-              <button type="button" onClick={limpiar} className="text-xs font-semibold text-humo hover:text-rojo">
+              <button
+                type="button"
+                onClick={limpiar}
+                className="-my-1 px-2 py-1 text-xs font-semibold text-humo hover:text-rojo"
+              >
                 Vaciar
               </button>
             ) : null}
@@ -794,12 +871,12 @@ export default function Cobrar({ catalogoInicial, vendedorasIniciales, cuenta, c
           <div className="flex-1 overflow-y-auto">
             {lineas.length === 0 ? (
               <p className="px-4 py-10 text-center text-sm text-humo">
-                Teclea el codigo de la prenda o pasa el lector.
+                {tactil ? "Escanea la prenda o buscala arriba." : "Teclea el codigo de la prenda o pasa el lector."}
               </p>
             ) : (
               <ul>
                 {lineas.map((linea, i) => (
-                  <li key={`${linea.modelo_id}-${i}`} className="flex items-center gap-2 border-b border-linea px-3 py-2.5">
+                  <li key={`${linea.modelo_id}-${i}`} className="flex items-start gap-2 border-b border-linea px-3 py-2.5">
                     <div className="min-w-0 flex-1">
                       <p className="codigo text-sm">{linea.codigo}</p>
                       <p className="truncate text-xs text-humo">{linea.descripcion}</p>
@@ -808,41 +885,45 @@ export default function Cobrar({ catalogoInicial, vendedorasIniciales, cuenta, c
                       <button
                         type="button"
                         onClick={() => setCambiandoPrecio(i)}
-                        className="mt-0.5 text-xs font-semibold text-vino underline decoration-dotted underline-offset-2 hover:text-vino-oscuro"
+                        className="-ml-1 mt-0.5 px-1 py-1 text-xs font-semibold text-vino underline decoration-dotted underline-offset-2 hover:text-vino-oscuro"
                         title="Cambiar el precio (F7 cambia el de la ultima prenda)"
                       >
                         {pesos(linea.precio)} c/u
                       </button>
                       {linea.precio_lista !== undefined && linea.precio_lista !== linea.precio ? (
-                        <span className="ml-2 text-xs text-humo line-through">{pesos(linea.precio_lista)}</span>
+                        <span className="ml-1 text-xs text-humo line-through">{pesos(linea.precio_lista)}</span>
                       ) : null}
                     </div>
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => cambiarPiezas(i, -1)}
-                        className="flex h-8 w-8 items-center justify-center rounded-sm border border-linea-fuerte text-humo hover:border-oro"
-                        aria-label="Una pieza menos"
-                      >
-                        <IconoMenos tamano={14} />
-                      </button>
-                      <span className="cifra w-8 text-center text-base font-semibold">{linea.piezas}</span>
-                      <button
-                        type="button"
-                        onClick={() => cambiarPiezas(i, 1)}
-                        className="flex h-8 w-8 items-center justify-center rounded-sm border border-linea-fuerte text-humo hover:border-oro"
-                        aria-label="Una pieza mas"
-                      >
-                        <IconoMas tamano={14} />
-                      </button>
+                    {/* En el telefono el importe va arriba y las piezas abajo;
+                        en pantalla ancha, en un renglon. */}
+                    <div className="flex flex-col items-end gap-1.5 sm:flex-row sm:items-center sm:gap-2">
+                      <span className="cifra text-sm font-semibold sm:order-2 sm:w-24 sm:text-right">
+                        {pesos(linea.precio * linea.piezas)}
+                      </span>
+                      <div className="flex items-center gap-1 sm:order-1">
+                        <button
+                          type="button"
+                          onClick={() => cambiarPiezas(i, -1)}
+                          className="flex h-10 w-10 items-center justify-center rounded-sm border border-linea-fuerte text-humo hover:border-oro sm:h-8 sm:w-8"
+                          aria-label="Una pieza menos"
+                        >
+                          <IconoMenos tamano={14} />
+                        </button>
+                        <span className="cifra w-8 text-center text-base font-semibold">{linea.piezas}</span>
+                        <button
+                          type="button"
+                          onClick={() => cambiarPiezas(i, 1)}
+                          className="flex h-10 w-10 items-center justify-center rounded-sm border border-linea-fuerte text-humo hover:border-oro sm:h-8 sm:w-8"
+                          aria-label="Una pieza mas"
+                        >
+                          <IconoMas tamano={14} />
+                        </button>
+                      </div>
                     </div>
-                    <span className="cifra w-24 text-right text-sm font-semibold">
-                      {pesos(linea.precio * linea.piezas)}
-                    </span>
                     <button
                       type="button"
                       onClick={() => quitar(i)}
-                      className="flex h-8 w-8 items-center justify-center text-humo hover:text-rojo"
+                      className="flex h-10 w-8 items-center justify-center text-humo hover:text-rojo sm:h-8"
                       aria-label={`Quitar ${linea.codigo}`}
                     >
                       <IconoCerrar tamano={15} />
@@ -853,7 +934,9 @@ export default function Cobrar({ catalogoInicial, vendedorasIniciales, cuenta, c
             )}
           </div>
 
-          <div className="border-t border-linea-fuerte px-4 py-3">
+          {/* El total y Cobrar. En el telefono se quedan fijos abajo, a la
+              mano del pulgar, aunque la venta sea larga. */}
+          <div className="fixed inset-x-0 bottom-0 z-20 border-t border-linea-fuerte bg-papel px-3 pb-3 pt-2 shadow-[0_-4px_12px_rgba(26,22,19,0.08)] lg:static lg:px-4 lg:py-3 lg:shadow-none">
             {descuento > 0 ? (
               <div className="mb-1 flex items-center justify-between text-sm text-humo">
                 <span>
@@ -866,29 +949,30 @@ export default function Cobrar({ catalogoInicial, vendedorasIniciales, cuenta, c
               <span className="etiqueta mb-0">
                 Total {piezas > 0 ? `- ${piezas} ${piezas === 1 ? "pieza" : "piezas"}` : ""}
               </span>
-              <span className="titulo cifra text-cifra">{pesos(total)}</span>
+              <span className="titulo cifra text-3xl lg:text-cifra">{pesos(total)}</span>
             </div>
 
             <Boton
               variante="primario"
               tamano="grande"
-              className="mt-3 w-full"
+              className="mt-2 w-full lg:mt-3"
               onClick={abrirCobro}
               disabled={!lineas.length}
             >
-              Cobrar (F4)
+              Cobrar<span className="hidden lg:inline">&nbsp;(F4)</span>
             </Boton>
 
             <div className="mt-2 flex gap-2">
               <Boton className="flex-1" onClick={() => setPidiendoDescuento(true)} disabled={!lineas.length}>
-                Descuento (F6)
+                Descuento<span className="hidden lg:inline">&nbsp;(F6)</span>
               </Boton>
               <Boton className="flex-1" onClick={guardarEspera} disabled={!lineas.length}>
-                <IconoEspera tamano={16} /> Espera (F8)
+                <IconoEspera tamano={16} /> Espera<span className="hidden lg:inline">&nbsp;(F8)</span>
               </Boton>
               {espera.length > 0 ? (
                 <Boton className="flex-1" onClick={() => setVerEspera(true)}>
-                  Retomar {espera.length} (F9)
+                  Retomar {espera.length}
+                  <span className="hidden lg:inline">&nbsp;(F9)</span>
                 </Boton>
               ) : null}
             </div>
@@ -902,6 +986,7 @@ export default function Cobrar({ catalogoInicial, vendedorasIniciales, cuenta, c
           vendedoras={vendedoras}
           vendio={vendio}
           onVendio={setVendio}
+          tactil={tactil}
           onCerrar={() => {
             setPagando(false);
             enfocarBuscador();
@@ -1001,6 +1086,7 @@ function VentanaPago({
   vendedoras,
   vendio,
   onVendio,
+  tactil,
   onCerrar,
   onCobrar,
 }: {
@@ -1008,6 +1094,8 @@ function VentanaPago({
   vendedoras: QuienVende[];
   vendio: number | null;
   onVendio: (id: number | null) => void;
+  /** En pantalla tactil no se dicen los atajos de teclado: ahi no hay teclado. */
+  tactil: boolean;
   onCerrar: () => void;
   onCobrar: (forma: FormaPago, recibido: number) => void;
 }) {
@@ -1049,7 +1137,7 @@ function VentanaPago({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-tinta/50 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-tinta/50 p-2 sm:p-4"
       onKeyDown={(e) => {
         // En la lista de vendedoras las letras buscan el nombre y Enter la
         // elige: ahi no son atajos de forma de pago ni confirman el cobro.
@@ -1073,17 +1161,19 @@ function VentanaPago({
       {/* Con la lista de vendedoras la ventana crecio: en una pantalla baja se
           desliza en vez de cortarse arriba y abajo. */}
       <div className="max-h-full w-full max-w-xl overflow-y-auto rounded-sm border border-linea-fuerte bg-papel">
-        <div className="border-b border-linea px-6 py-4 text-center">
+        <div className="border-b border-linea px-4 py-3 text-center sm:px-6 sm:py-4">
           <p className="etiqueta">Total a cobrar</p>
-          <p className="titulo cifra text-cifra-grande text-vino">{pesos(total)}</p>
+          <p className="titulo cifra text-5xl text-vino sm:text-cifra-grande">{pesos(total)}</p>
         </div>
 
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           <label className="etiqueta" htmlFor="quien-vendio">
             Quien hizo la venta
-            <span className="ml-2 font-normal normal-case tracking-normal text-humo">
-              la primera letra de su nombre y Enter
-            </span>
+            {tactil ? null : (
+              <span className="ml-2 font-normal normal-case tracking-normal text-humo">
+                la primera letra de su nombre y Enter
+              </span>
+            )}
           </label>
           <select
             id="quien-vendio"
@@ -1116,7 +1206,8 @@ function VentanaPago({
           </select>
           {vendedoras.length === 0 ? (
             <p className="mb-4 text-sm font-medium text-rojo">
-              No hay vendedoras dadas de alta. El duenio las agrega en Vendedoras.
+              No hay vendedoras para cobrar aqui. El duenio las agrega en Vendedoras y elige donde vende cada
+              una.
             </p>
           ) : faltaQuien && !sabeQuien ? (
             <p className="mb-4 text-sm font-medium text-rojo">Elige quien hizo la venta para poder cobrar.</p>
@@ -1142,9 +1233,11 @@ function VentanaPago({
                 >
                   <Icono tamano={22} />
                   {NOMBRE_FORMA_PAGO[f]}
-                  <span className="text-[0.65rem] font-normal opacity-70">
-                    {f === "efectivo" ? "E" : f === "tarjeta" ? "T" : "R"}
-                  </span>
+                  {tactil ? null : (
+                    <span className="text-[0.65rem] font-normal opacity-70">
+                      {f === "efectivo" ? "E" : f === "tarjeta" ? "T" : "R"}
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -1198,7 +1291,7 @@ function VentanaPago({
 
           <div className="mt-6 flex gap-3">
             <Boton className="flex-1" onClick={onCerrar}>
-              Cancelar (Esc)
+              Cancelar<span className="hidden lg:inline">&nbsp;(Esc)</span>
             </Boton>
             <Boton variante="primario" tamano="grande" className="flex-[2]" onClick={confirmar} disabled={!alcanza}>
               Confirmar y dar ticket

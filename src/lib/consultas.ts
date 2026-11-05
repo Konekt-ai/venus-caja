@@ -1,5 +1,6 @@
 import "server-only";
 import { getDb } from "./db";
+import { esVendeEn, type Lugar, type VendeEn } from "./lugar";
 import type { ModeloCaja, QuienVende } from "./tipos";
 
 /**
@@ -40,7 +41,7 @@ type FilaModelo = {
   descripcion: string;
   categoria: string;
   precio: number | null;
-  en_tienda: number;
+  piezas: number;
   barras: string | null;
   barras_viejas: string | null;
 };
@@ -50,14 +51,18 @@ function partirBarras(juntas: string | null): string[] {
 }
 
 /**
- * El catalogo entero, con precio y existencia de tienda.
+ * El catalogo entero, con precio y las piezas que hay en el lugar donde se
+ * cobra (la tienda o el tianguis).
  *
  * Son unos 130 modelos: cabe de sobra en el navegador. La pantalla de
  * cobrar se lo lleva completo de una vez y busca ahi, en vez de preguntarle
  * al servidor en cada tecla. Es lo que hace que la busqueda no tenga espera
  * y que se pueda seguir cobrando si se cae la conexion.
  */
-export function catalogoParaCaja(): ModeloCaja[] {
+export function catalogoParaCaja(lugar: Lugar = "tienda"): ModeloCaja[] {
+  // Nombre de columna fijo segun el lugar, nunca algo que venga de afuera.
+  const columna = lugar === "tianguis" ? "m.en_tianguis" : "m.en_tienda";
+
   // Un codigo viejo solo sirve de alias mientras siga siendo inequivoco.
   // Si dos prendas lo tuvieron, o si hoy es el codigo vigente o un alias
   // manual de otra, escanearlo cobraria la prenda equivocada sin aviso,
@@ -81,7 +86,7 @@ export function catalogoParaCaja(): ModeloCaja[] {
   const filas = getDb()
     .prepare(
       `SELECT m.id, m.codigo, m.codigo_norm, m.prefijo, m.numero, m.descripcion,
-              m.categoria, p.precio AS precio, m.en_tienda,
+              m.categoria, p.precio AS precio, ${columna} AS piezas,
               (SELECT group_concat(cb.codigo_barras, char(31))
                  FROM caja_codigos_barras cb WHERE cb.modelo_id = m.id) AS barras,
               ${barrasViejas} AS barras_viejas
@@ -101,7 +106,7 @@ export function catalogoParaCaja(): ModeloCaja[] {
     descripcion: f.descripcion,
     categoria: f.categoria,
     precio: f.precio ?? 0,
-    en_tienda: f.en_tienda,
+    piezas: f.piezas,
     // El Set quita repetidos: un codigo viejo puede estar tambien capturado
     // como alias manual de la misma prenda, y dos veces no aporta nada.
     barras: [...new Set([...partirBarras(f.barras), ...partirBarras(f.barras_viejas)])],
@@ -114,6 +119,8 @@ export type Vendedora = {
   puesto: string;
   rol: string;
   tiene_pin: boolean;
+  /** Donde vende: al cobrar solo sale en la lista de ese lugar. */
+  vende_en: VendeEn;
 };
 
 /** Las vendedoras salen de la tabla 'personal' de la bodega: es la misma gente. */
@@ -122,7 +129,8 @@ export function listarVendedoras(soloActivas = true): Vendedora[] {
     .prepare(
       `SELECT p.id, p.nombre, p.puesto,
               COALESCE(v.rol, 'vendedora') AS rol,
-              CASE WHEN COALESCE(v.pin_hash,'') = '' THEN 0 ELSE 1 END AS tiene_pin
+              CASE WHEN COALESCE(v.pin_hash,'') = '' THEN 0 ELSE 1 END AS tiene_pin,
+              COALESCE(v.vende_en, 'tienda') AS vende_en
          FROM personal p
          LEFT JOIN caja_vendedoras v ON v.personal_id = p.id
         WHERE (? = 0 OR p.activo = 1)
@@ -135,19 +143,27 @@ export function listarVendedoras(soloActivas = true): Vendedora[] {
     puesto: string;
     rol: string;
     tiene_pin: number;
+    vende_en: string;
   }[];
 
-  return filas.map((f) => ({ ...f, tiene_pin: f.tiene_pin === 1 }));
+  return filas.map((f) => ({
+    ...f,
+    tiene_pin: f.tiene_pin === 1,
+    vende_en: esVendeEn(f.vende_en) ? f.vende_en : "tienda",
+  }));
 }
 
 /**
- * Las que pueden quedar como quien hizo la venta: el personal activo de la
- * bodega, tengan PIN o no. Una vendedora no necesita PIN para vender: entra
- * con el de VENTAS y aqui se elige su nombre. La cuenta VENTAS no esta en
- * 'personal', asi que nunca sale en esta lista.
+ * Las que pueden quedar como quien hizo la venta en un lugar: el personal
+ * activo de la bodega que vende ahi (o en los dos lados), tengan PIN o no.
+ * Una vendedora no necesita PIN para vender: se entra con el de VENTAS o el
+ * de TIANGUIS y aqui se elige su nombre. Esas cuentas no estan en
+ * 'personal', asi que nunca salen en esta lista.
  */
-export function quienesVenden(): QuienVende[] {
-  return listarVendedoras(true).map(({ id, nombre }) => ({ id, nombre }));
+export function quienesVenden(lugar: Lugar = "tienda"): QuienVende[] {
+  return listarVendedoras(true)
+    .filter((v) => v.vende_en === lugar || v.vende_en === "ambos")
+    .map(({ id, nombre }) => ({ id, nombre }));
 }
 
 export type VentaResumen = {
@@ -163,17 +179,17 @@ export type VentaResumen = {
   formas: string;
 };
 
-/** Lo cobrado en un dia (YYYY-MM-DD), lo mas reciente primero. */
-export function ventasDelDia(dia: string): VentaResumen[] {
+/** Lo cobrado en un dia (YYYY-MM-DD) en una caja, lo mas reciente primero. */
+export function ventasDelDia(dia: string, caja: string): VentaResumen[] {
   return getDb()
     .prepare(
       `SELECT v.id, v.folio, v.fecha, v.vendedora, v.cobro, v.piezas, v.total, v.estado,
               COALESCE((SELECT group_concat(pg.forma, ', ') FROM caja_pagos pg WHERE pg.venta_id = v.id), '') AS formas
          FROM caja_ventas v
-        WHERE date(v.fecha) = ?
+        WHERE date(v.fecha) = ? AND v.caja = ?
         ORDER BY v.fecha DESC`
     )
-    .all(dia) as VentaResumen[];
+    .all(dia, caja) as VentaResumen[];
 }
 
 export type VentaCompleta = {
@@ -241,20 +257,20 @@ export type CorteDelDia = {
  * Solo el efectivo cuenta para eso. Lo de tarjeta y transferencia se cobro
  * pero nunca paso por el cajon, asi que se reporta aparte.
  */
-export function corteDelDia(dia: string): CorteDelDia {
+export function corteDelDia(dia: string, caja: string): CorteDelDia {
   const db = getDb();
 
   const totales = db
     .prepare(
       `SELECT COUNT(*) AS ventas, COALESCE(SUM(piezas),0) AS piezas, COALESCE(SUM(total),0) AS total
-         FROM caja_ventas WHERE date(fecha) = ? AND estado = 'cobrada'`
+         FROM caja_ventas WHERE date(fecha) = ? AND caja = ? AND estado = 'cobrada'`
     )
-    .get(dia) as { ventas: number; piezas: number; total: number };
+    .get(dia, caja) as { ventas: number; piezas: number; total: number };
 
   const canceladas = (
     db
-      .prepare(`SELECT COUNT(*) AS n FROM caja_ventas WHERE date(fecha) = ? AND estado = 'cancelada'`)
-      .get(dia) as { n: number }
+      .prepare(`SELECT COUNT(*) AS n FROM caja_ventas WHERE date(fecha) = ? AND caja = ? AND estado = 'cancelada'`)
+      .get(dia, caja) as { n: number }
   ).n;
 
   const por_forma = db
@@ -262,13 +278,15 @@ export function corteDelDia(dia: string): CorteDelDia {
       `SELECT pg.forma, COUNT(*) AS ventas, COALESCE(SUM(pg.monto),0) AS monto
          FROM caja_pagos pg
          JOIN caja_ventas v ON v.id = pg.venta_id
-        WHERE date(v.fecha) = ? AND v.estado = 'cobrada'
+        WHERE date(v.fecha) = ? AND v.caja = ? AND v.estado = 'cobrada'
         GROUP BY pg.forma
         ORDER BY monto DESC`
     )
-    .all(dia) as { forma: string; ventas: number; monto: number }[];
+    .all(dia, caja) as { forma: string; ventas: number; monto: number }[];
 
-  const corte = db.prepare(`SELECT id, fondo FROM caja_cortes WHERE dia = ?`).get(dia) as
+  // Cada caja lleva su propio cajon: el de la tienda y el del tianguis no se
+  // juntan, cada uno cuadra con lo suyo.
+  const corte = db.prepare(`SELECT id, fondo FROM caja_cortes WHERE dia = ? AND caja = ?`).get(dia, caja) as
     | { id: number; fondo: number }
     | undefined;
 
@@ -319,10 +337,10 @@ export function ultimoFolio(caja: string): number {
 export type EstadoCorte = { cerrado: boolean; contado: number | null; diferencia: number | null };
 
 /** Si el dia ya se cerro, cuanto se conto y de cuanto fue la diferencia. */
-export function estadoCorte(dia: string): EstadoCorte {
+export function estadoCorte(dia: string, caja: string): EstadoCorte {
   const fila = getDb()
-    .prepare("SELECT estado, efectivo_contado, diferencia FROM caja_cortes WHERE dia = ?")
-    .get(dia) as { estado: string; efectivo_contado: number | null; diferencia: number | null } | undefined;
+    .prepare("SELECT estado, efectivo_contado, diferencia FROM caja_cortes WHERE dia = ? AND caja = ?")
+    .get(dia, caja) as { estado: string; efectivo_contado: number | null; diferencia: number | null } | undefined;
   return {
     cerrado: fila?.estado === "cerrado",
     contado: fila?.efectivo_contado ?? null,

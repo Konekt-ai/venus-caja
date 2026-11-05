@@ -1,5 +1,6 @@
 "use client";
 
+import { lugarDeCaja, type Lugar } from "./lugar";
 import type { LineaVenta, ModeloCaja, QuienVende, VentaParaGuardar } from "./tipos";
 
 /**
@@ -62,22 +63,37 @@ export function idUnico(): string {
 
 // --- Catalogo -------------------------------------------------------------
 
+/**
+ * La tienda y el tianguis guardan su copia aparte: cada una trae las piezas
+ * de su lugar. La de la tienda conserva la llave de siempre.
+ */
+function llaveCatalogo(lugar: Lugar): string {
+  return lugar === "tianguis" ? `${LLAVE_CATALOGO}_tianguis` : LLAVE_CATALOGO;
+}
+
 /** Se guarda una copia para poder cobrar aunque el servidor no conteste. */
-export function guardarCatalogo(catalogo: ModeloCaja[]): void {
-  escribir(LLAVE_CATALOGO, catalogo);
+export function guardarCatalogo(catalogo: ModeloCaja[], lugar: Lugar): void {
+  escribir(llaveCatalogo(lugar), catalogo);
 }
 
-export function catalogoGuardado(): ModeloCaja[] {
-  return leer<ModeloCaja[]>(LLAVE_CATALOGO, []);
+export function catalogoGuardado(lugar: Lugar): ModeloCaja[] {
+  return leer<ModeloCaja[]>(llaveCatalogo(lugar), []);
 }
 
-/** La lista de quien vende, por la misma razon: sin ella no se podria cobrar sin internet. */
-export function guardarVendedoras(vendedoras: QuienVende[]): void {
-  escribir(LLAVE_VENDEDORAS, vendedoras);
+/**
+ * La lista de quien vende, por la misma razon: sin ella no se podria cobrar
+ * sin internet. Cada lugar guarda la suya.
+ */
+function llaveVendedoras(lugar: Lugar): string {
+  return `${LLAVE_VENDEDORAS}_${lugar}`;
 }
 
-export function vendedorasGuardadas(): QuienVende[] {
-  return leer<QuienVende[]>(LLAVE_VENDEDORAS, []);
+export function guardarVendedoras(vendedoras: QuienVende[], lugar: Lugar): void {
+  escribir(llaveVendedoras(lugar), vendedoras);
+}
+
+export function vendedorasGuardadas(lugar: Lugar): QuienVende[] {
+  return leer<QuienVende[]>(llaveVendedoras(lugar), []);
 }
 
 // --- Folio ----------------------------------------------------------------
@@ -86,16 +102,25 @@ export function vendedorasGuardadas(): QuienVende[] {
  * El folio se calcula aqui para que el ticket se imprima en el momento,
  * haya internet o no. El servidor lo respeta si esta libre.
  */
+/**
+ * Cada caja cuenta sus folios aparte (C1-000001 y T1-000001 no son el mismo
+ * contador). La de la tienda conserva la llave de siempre, para no reiniciar
+ * la cuenta de una computadora que ya estaba cobrando.
+ */
+function llaveFolio(caja: string): string {
+  return lugarDeCaja(caja) === "tianguis" ? `${LLAVE_FOLIO}_${caja}` : LLAVE_FOLIO;
+}
+
 export function siguienteFolioLocal(caja: string, minimo: number): string {
-  const guardado = leer<number>(LLAVE_FOLIO, 0);
+  const guardado = leer<number>(llaveFolio(caja), 0);
   const siguiente = Math.max(guardado, minimo) + 1;
-  escribir(LLAVE_FOLIO, siguiente);
+  escribir(llaveFolio(caja), siguiente);
   return `${caja}-${String(siguiente).padStart(6, "0")}`;
 }
 
-export function ajustarFolioLocal(numero: number): void {
-  const guardado = leer<number>(LLAVE_FOLIO, 0);
-  if (numero > guardado) escribir(LLAVE_FOLIO, numero);
+export function ajustarFolioLocal(caja: string, numero: number): void {
+  const guardado = leer<number>(llaveFolio(caja), 0);
+  if (numero > guardado) escribir(llaveFolio(caja), numero);
 }
 
 // --- Cola de ventas por subir --------------------------------------------

@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import GestorVendedoras from "@/components/GestorVendedoras";
 import { BotonEnlace, TituloPagina } from "@/components/ui";
 import { listarVendedoras } from "@/lib/consultas";
-import { esDuenio, hayPinVentas, sesionActual } from "@/lib/sesion";
+import { esDuenio, hayPinCuenta, sesionActual } from "@/lib/sesion";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +20,10 @@ export default async function Pagina() {
         descripcion="Son las mismas personas del sistema de bodega. Al cobrar se elige de esta lista quien hizo la venta."
         accion={<BotonEnlace href="/">Ir a cobrar</BotonEnlace>}
       />
-      <GestorVendedoras personal={personal} hayPinVentas={hayPinVentas()} />
+      <GestorVendedoras
+        personal={personal}
+        conPin={{ ventas: hayPinCuenta("ventas"), tianguis: hayPinCuenta("tianguis") }}
+      />
     </main>
   );
 }

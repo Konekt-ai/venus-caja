@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { sesionActual } from "@/lib/sesion";
+import { cajaDeLugar } from "@/lib/db";
+import { lugarDeSesion, sesionActual } from "@/lib/sesion";
 import type { VentaParaGuardar } from "@/lib/tipos";
 import { registrarVenta } from "@/lib/ventas";
 
@@ -31,7 +32,9 @@ export async function POST(peticion: Request) {
   // ya con otra cuenta adentro; si no viene, se toma la de ahora.
   if (!venta.cobro?.trim()) venta.cobro = sesion.nombre;
 
-  const resultado = registrarVenta(venta);
+  // Si la venta no dice en que caja se cobro (una vieja que estaba en la
+  // cola), cae en la del lugar de quien la sube.
+  const resultado = registrarVenta(venta, cajaDeLugar(lugarDeSesion(sesion)));
   if (!resultado.ok) {
     // 400 y no 500: es un problema de la venta misma, reintentarla no la va
     // a arreglar y la cola no debe quedarse atorada con ella.

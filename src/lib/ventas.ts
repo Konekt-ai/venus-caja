@@ -1,6 +1,7 @@
 import "server-only";
 import type Database from "better-sqlite3";
-import { getDb, leerAjuste, nombreCaja } from "./db";
+import { claveFondo, esCajaConocida, getDb, leerAjuste, nombreCaja } from "./db";
+import { EL_LUGAR, lugarDeCaja, type Lugar } from "./lugar";
 import { repartirDescuento } from "./dinero";
 import type { Resultado, VentaParaGuardar } from "./tipos";
 import { FORMAS_PAGO } from "./tipos";
@@ -97,7 +98,7 @@ function corteDelDia(db: Database.Database, caja: string, dia: string, quien: st
 
   // El fondo con el que se abre es el mismo de siempre, guardado en Ajustes:
   // asi nadie tiene que capturarlo cada manana.
-  const fondo = parseInt(leerAjuste("fondo_inicial", "0"), 10) || 0;
+  const fondo = parseInt(leerAjuste(claveFondo(caja), "0"), 10) || 0;
   const info = db
     .prepare(`INSERT INTO caja_cortes (caja, dia, fondo, abierto_por) VALUES (?, ?, ?, ?)`)
     .run(caja, dia, fondo, quien);
@@ -112,9 +113,40 @@ export type VentaGuardada = {
   avisos: string[];
 };
 
-export function registrarVenta(venta: VentaParaGuardar): Resultado<VentaGuardada> {
+/**
+ * Lo que cambia entre cobrar en la tienda y cobrar en el tianguis.
+ *
+ * 'columna' es la cuenta de piezas de la bodega que se descuenta. Los tipos
+ * de movimiento son los que la bodega ya conoce para cada lugar. 'conBodega'
+ * dice que numero va en existencia_antes/despues: la bodega lee los de
+ * 'venta' y 'cancelacion' como su propia cuenta (que no cambia), y los del
+ * tianguis como la cuenta del tianguis (ver lugarDelMovimiento en la bodega).
+ */
+const POR_LUGAR: Record<
+  Lugar,
+  { columna: "en_tienda" | "en_tianguis"; venta: string; cancelacion: string; conBodega: boolean }
+> = {
+  tienda: { columna: "en_tienda", venta: "venta", cancelacion: "cancelacion", conBodega: true },
+  tianguis: { columna: "en_tianguis", venta: "venta_tianguis", cancelacion: "cancelacion_tianguis", conBodega: false },
+};
+
+/**
+ * La caja con la que se guarda la venta: la que trae la venta si es una de
+ * las de esta instalacion, o la de quien la esta subiendo. La venta la trae
+ * porque una cobrada sin internet en el tianguis puede subirse despues, y
+ * tiene que caer en el tianguis aunque para entonces se haya entrado con
+ * otra cuenta.
+ */
+function cajaDeLaVenta(venta: VentaParaGuardar, porOmision: string): string {
+  const propuesta = (venta.caja ?? "").trim().toUpperCase();
+  return propuesta && esCajaConocida(propuesta) ? propuesta : porOmision;
+}
+
+export function registrarVenta(venta: VentaParaGuardar, cajaPorOmision = nombreCaja()): Resultado<VentaGuardada> {
   const db = getDb();
-  const caja = nombreCaja();
+  const caja = cajaDeLaVenta(venta, cajaPorOmision);
+  const lugar = lugarDeCaja(caja);
+  const reglas = POR_LUGAR[lugar];
 
   try {
     return db.transaction((): Resultado<VentaGuardada> => {
@@ -225,28 +257,31 @@ export function registrarVenta(venta: VentaParaGuardar): Resultado<VentaGuardada
            (venta_id, modelo_id, codigo, descripcion, piezas, precio, importe, sin_respaldo, precio_lista)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       );
-      const bajarTienda = db.prepare(
-        `UPDATE modelos SET en_tienda = en_tienda - ?, actualizado_en = datetime('now','localtime') WHERE id = ?`
+      const bajarPiezas = db.prepare(
+        `UPDATE modelos SET ${reglas.columna} = ${reglas.columna} - ?, actualizado_en = datetime('now','localtime') WHERE id = ?`
       );
       const insertarMovimiento = db.prepare(
         `INSERT INTO movimientos
            (modelo_id, tipo, cantidad, existencia_antes, existencia_despues, persona, nota, fecha)
-         VALUES (?, 'venta', ?, ?, ?, ?, ?, COALESCE(?, datetime('now','localtime')))`
+         VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now','localtime')))`
       );
 
-      const bloquear = leerAjuste("bloquear_sin_existencia", "0") === "1";
+      // El candado de Ajustes es de la tienda. En el tianguis se vende aunque
+      // el sistema diga que no hay: una venta hecha sin senal se sube despues,
+      // y para entonces ya no se le puede decir a la clienta que no.
+      const bloquear = lugar === "tienda" && leerAjuste("bloquear_sin_existencia", "0") === "1";
       const avisos: string[] = [];
 
       for (let i = 0; i < venta.lineas.length; i++) {
         const linea = venta.lineas[i]!;
         const modelo = db
-          .prepare("SELECT id, codigo, descripcion, existencia, en_tienda FROM modelos WHERE id = ?")
+          .prepare(`SELECT id, codigo, descripcion, existencia, ${reglas.columna} AS piezas FROM modelos WHERE id = ?`)
           .get(linea.modelo_id) as
-          | { id: number; codigo: string; descripcion: string; existencia: number; en_tienda: number }
+          | { id: number; codigo: string; descripcion: string; existencia: number; piezas: number }
           | undefined;
         if (!modelo) throw new ErrorDeVenta(`Ya no existe el modelo ${linea.codigo} en el catalogo.`);
 
-        const faltan = linea.piezas - modelo.en_tienda;
+        const faltan = linea.piezas - modelo.piezas;
         if (faltan > 0) {
           // Hoy la bodega todavia no registra los envios a la tienda, asi que
           // casi todo esta en cero. Detener la venta por eso seria perderla:
@@ -254,12 +289,12 @@ export function registrarVenta(venta: VentaParaGuardar): Resultado<VentaGuardada
           // Cuando el inventario sea confiable se enciende el candado en Ajustes.
           if (bloquear) {
             throw new ErrorDeVenta(
-              `No alcanza: de ${modelo.codigo} quedan ${modelo.en_tienda} ` +
-                `${modelo.en_tienda === 1 ? "pieza" : "piezas"} en la tienda.`
+              `No alcanza: de ${modelo.codigo} quedan ${modelo.piezas} ` +
+                `${modelo.piezas === 1 ? "pieza" : "piezas"} en ${EL_LUGAR[lugar]}.`
             );
           }
           avisos.push(
-            `${modelo.codigo}: se vendieron ${linea.piezas} y en el sistema habia ${modelo.en_tienda}.`
+            `${modelo.codigo}: se vendieron ${linea.piezas} y en el sistema habia ${modelo.piezas} en ${EL_LUGAR[lugar]}.`
           );
         }
 
@@ -279,18 +314,21 @@ export function registrarVenta(venta: VentaParaGuardar): Resultado<VentaGuardada
           Number.isInteger(linea.precio_lista) && (linea.precio_lista ?? -1) >= 0 ? linea.precio_lista : null
         );
 
-        // Solo baja lo que hay en la tienda. La existencia de bodega no se
-        // toca: esa pieza salio del rack cuando se hizo el envio, sumarla o
-        // restarla aqui la reviviria o la desapareceria del rack.
-        bajarTienda.run(linea.piezas, modelo.id);
+        // Solo baja lo que hay en el lugar donde se cobro. La existencia de
+        // bodega no se toca: esa pieza salio del rack cuando se hizo el envio,
+        // sumarla o restarla aqui la reviviria o la desapareceria del rack.
+        bajarPiezas.run(linea.piezas, modelo.id);
 
-        // El rastro que ve la bodega. 'existencia_antes' y 'despues' son las
-        // de bodega, que no cambiaron: van iguales a proposito.
+        // El rastro que ve la bodega. En la tienda 'existencia_antes' y
+        // 'despues' son las de bodega, que no cambiaron (van iguales a
+        // proposito); en el tianguis son las del tianguis, como las anota la
+        // propia bodega cuando se vende desde el celular.
         insertarMovimiento.run(
           modelo.id,
+          reglas.venta,
           linea.piezas,
-          modelo.existencia,
-          modelo.existencia,
+          reglas.conBodega ? modelo.existencia : modelo.piezas,
+          reglas.conBodega ? modelo.existencia : modelo.piezas - linea.piezas,
           vendedora.nombre,
           `Venta ${folio}`,
           fecha
@@ -319,7 +357,8 @@ export function registrarVenta(venta: VentaParaGuardar): Resultado<VentaGuardada
  *
  * No se borra nunca: queda marcada, con motivo y con quien la cancelo. Un
  * ticket que desaparece es un hueco en el corte que despues nadie puede
- * explicar. Las piezas regresan a la tienda y queda su rastro en la bodega.
+ * explicar. Las piezas regresan al lugar donde se cobro (la tienda o el
+ * tianguis) y queda su rastro en la bodega.
  */
 export function cancelarVenta(id: string, motivo: string, quien: string): Resultado {
   const db = getDb();
@@ -328,9 +367,9 @@ export function cancelarVenta(id: string, motivo: string, quien: string): Result
 
   try {
     return db.transaction((): Resultado => {
-      const venta = db.prepare("SELECT id, folio, estado FROM caja_ventas WHERE id = ? OR folio = ?").get(id, id) as
-        | { id: string; folio: string; estado: string }
-        | undefined;
+      const venta = db
+        .prepare("SELECT id, folio, estado, caja FROM caja_ventas WHERE id = ? OR folio = ?")
+        .get(id, id) as { id: string; folio: string; estado: string; caja: string } | undefined;
       if (!venta) throw new ErrorDeVenta("No se encontro esa venta.");
       if (venta.estado === "cancelada") throw new ErrorDeVenta("Esa venta ya estaba cancelada.");
 
@@ -338,26 +377,28 @@ export function cancelarVenta(id: string, motivo: string, quien: string): Result
         .prepare("SELECT modelo_id, piezas FROM caja_venta_lineas WHERE venta_id = ?")
         .all(venta.id) as { modelo_id: number | null; piezas: number }[];
 
+      const reglas = POR_LUGAR[lugarDeCaja(venta.caja)];
       const regresar = db.prepare(
-        `UPDATE modelos SET en_tienda = en_tienda + ?, actualizado_en = datetime('now','localtime') WHERE id = ?`
+        `UPDATE modelos SET ${reglas.columna} = ${reglas.columna} + ?, actualizado_en = datetime('now','localtime') WHERE id = ?`
       );
       const rastro = db.prepare(
         `INSERT INTO movimientos (modelo_id, tipo, cantidad, existencia_antes, existencia_despues, persona, nota)
-         VALUES (?, 'cancelacion', ?, ?, ?, ?, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
       );
 
       for (const linea of lineas) {
         if (!linea.modelo_id) continue;
-        const modelo = db.prepare("SELECT existencia FROM modelos WHERE id = ?").get(linea.modelo_id) as
-          | { existencia: number }
-          | undefined;
+        const modelo = db
+          .prepare(`SELECT existencia, ${reglas.columna} AS piezas FROM modelos WHERE id = ?`)
+          .get(linea.modelo_id) as { existencia: number; piezas: number } | undefined;
         if (!modelo) continue;
         regresar.run(linea.piezas, linea.modelo_id);
         rastro.run(
           linea.modelo_id,
+          reglas.cancelacion,
           linea.piezas,
-          modelo.existencia,
-          modelo.existencia,
+          reglas.conBodega ? modelo.existencia : modelo.piezas,
+          reglas.conBodega ? modelo.existencia : modelo.piezas + linea.piezas,
           quien,
           `Cancelacion ${venta.folio}: ${motivo.trim()}`
         );

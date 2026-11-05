@@ -97,7 +97,10 @@ La venta queda a nombre de quien la hizo (en el ticket, en los reportes y en
 la bodega). En **Ventas del dia** se ve ademas con que cuenta se cobro.
 
 Para que alguien aparezca en la lista basta con darla de alta en
-**Vendedoras** (o en Personal, en la bodega); no necesita PIN.
+**Vendedoras** (o en Personal, en la bodega); no necesita PIN. Ahi mismo se
+elige **donde vende** cada una: *Tienda*, *Tianguis* o *Los dos*. Al cobrar
+solo salen las de ese lugar, asi que en el tianguis no aparecen las de la
+tienda. Quien no tiene nada elegido es de la tienda.
 
 Para entregar el turno se aprieta `F10` o se toca el nombre de arriba a la
 derecha, y la otra entra con su PIN. **La venta que este a medias no
@@ -124,6 +127,37 @@ pide elegir. Vale mas un segundo que cobrarle a la clienta la prenda
 equivocada.
 
 ---
+
+## La caja del tianguis
+
+El mismo programa cobra en el tianguis, desde el **SUNMI V3** (o cualquier
+celular): se abre la misma direccion de la caja y se entra con el **PIN de
+TIANGUIS** (el duenio lo pone en **Vendedoras**). Con esa cuenta la caja:
+
+- descuenta de lo que hay **en el tianguis** (`en_tianguis`), no de la tienda;
+- saca folios propios, **T1-000001**, y lleva su propio corte y su propio
+  cajon en *Ventas del dia*;
+- deja en la bodega el movimiento `venta_tianguis`, el mismo que cuando se
+  vende desde el celular, y en la bodega esas ventas cuentan como del
+  tianguis;
+- **vende aunque el sistema diga que no hay piezas** en el tianguis: la
+  venta queda marcada y la cuenta se cuadra despues. El candado de Ajustes
+  es solo de la tienda.
+
+Todo lo demas es igual: se elige quien vendio, varias prendas por ticket,
+descuentos, precio de una sola venta y sigue cobrando sin senal.
+
+Las entradas y salidas entre la bodega y el tianguis se siguen haciendo en el
+sistema de bodega (Salidas, "A tianguis" y el Cierre del tianguis).
+
+### En el telefono
+
+La pantalla se acomoda sola a lo angosto: la venta en una columna, botones
+grandes para el pulgar, y el total con **Cobrar** fijos abajo. En pantalla
+tactil el buscador no saca el teclado del telefono en cada escaneo (taparia
+media pantalla); para escribir un codigo a mano esta el boton **Teclado**.
+El lector del SUNMI tiene que estar en modo teclado ("KeyEvent") y mandar
+Enter al final, igual que el lector de la tienda.
 
 ## Que pasa si se cae el internet
 

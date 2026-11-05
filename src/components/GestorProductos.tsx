@@ -594,9 +594,9 @@ export default function GestorProductos({ catalogo }: { catalogo: ModeloCaja[] }
                     <td className="px-2 py-2 sm:px-3">{modelo.descripcion || "Sin descripcion"}</td>
                     <td className="hidden px-3 py-2 text-humo md:table-cell">{modelo.categoria || "-"}</td>
                     <td
-                      className={`cifra hidden px-3 py-2 text-right sm:table-cell ${modelo.en_tienda > 0 ? "" : "text-humo"}`}
+                      className={`cifra hidden px-3 py-2 text-right sm:table-cell ${modelo.piezas > 0 ? "" : "text-humo"}`}
                     >
-                      {modelo.en_tienda}
+                      {modelo.piezas}
                     </td>
                     <td className="px-2 py-2 sm:px-3">
                       <div className="flex items-center justify-end gap-2">

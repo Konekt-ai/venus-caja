@@ -100,6 +100,13 @@ for (const sufijo of ["", "-wal"]) {
       piezas INTEGER NOT NULL DEFAULT 1, precio INTEGER NOT NULL DEFAULT 0,
       importe INTEGER NOT NULL DEFAULT 0, sin_respaldo INTEGER NOT NULL DEFAULT 0)`);
   }
+  // Y las vendedoras, que antes no decian donde venden.
+  if (!vieja.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='caja_vendedoras'").get()) {
+    vieja.exec(`CREATE TABLE caja_vendedoras (
+      personal_id INTEGER PRIMARY KEY, pin_hash TEXT NOT NULL DEFAULT '', pin_sal TEXT NOT NULL DEFAULT '',
+      rol TEXT NOT NULL DEFAULT 'vendedora', activa INTEGER NOT NULL DEFAULT 1,
+      creado_en TEXT NOT NULL DEFAULT (datetime('now','localtime')))`);
+  }
   // Igual con las ventas, que antes no guardaban quien cobro.
   const yaHayVentas = vieja.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='caja_ventas'").get();
   if (!yaHayVentas) {
@@ -430,7 +437,7 @@ const r5 = registrarVenta(venta5);
 comprobar("se cobra la venta que luego se va a cancelar", r5.ok === true, r5.ok ? "" : r5.error);
 
 const tiendaAntesDeCancelar = enTienda(B.id);
-const corteAntesDeCancelar = corteDelDia(HOY);
+const corteAntesDeCancelar = corteDelDia(HOY, "C1");
 const cancelacion = cancelarVenta(venta5.id, "La clienta se arrepintio", vendedora.nombre);
 comprobar("la cancelacion se acepta", cancelacion.ok === true, cancelacion.ok ? "" : cancelacion.error);
 
@@ -447,7 +454,7 @@ iguales(
     .get("Cancelacion " + r5.datos.folio + "%").n,
   1
 );
-const corteDespuesDeCancelar = corteDelDia(HOY);
+const corteDespuesDeCancelar = corteDelDia(HOY, "C1");
 iguales(
   "el corte del dia ya no la cuenta",
   corteDespuesDeCancelar.ventas,
@@ -462,7 +469,7 @@ comprobar("no se puede cancelar dos veces", cancelarVenta(venta5.id, "otra vez",
 comprobar("no se puede cancelar sin decir por que", cancelarVenta("prueba-venta-1", "   ", vendedora.nombre).ok === false);
 comprobar(
   "la venta cancelada sigue apareciendo en el historial del dia",
-  ventasDelDia(HOY).some((v) => v.id === venta5.id && v.estado === "cancelada")
+  ventasDelDia(HOY, "C1").some((v) => v.id === venta5.id && v.estado === "cancelada")
 );
 
 // =======================================================================
@@ -488,7 +495,7 @@ const r7 = registrarVenta(venta7);
 comprobar("se cobra una con transferencia", r7.ok === true, r7.ok ? "" : r7.error);
 if (r7.ok) anotar(venta7.id, r7.datos.total, 2, "transferencia");
 
-const corte = corteDelDia(HOY);
+const corte = corteDelDia(HOY, "C1");
 const cuentas = cuentasDeLaLibreta();
 
 iguales("el corte cuenta las ventas cobradas del dia", corte.ventas, cuentas.ventas);
@@ -640,7 +647,7 @@ const conMilesimas = venta({
 });
 comprobar("se sube una venta de ayer con la hora del navegador", registrarVenta(conMilesimas).ok === true);
 iguales("conserva la fecha de ayer (hora con milesimas)", diaGuardado(conMilesimas.id), AYER);
-iguales("las 3 ventas de ayer caen en el corte de ayer", corteDelDia(AYER).ventas, 3);
+iguales("las 3 ventas de ayer caen en el corte de ayer", corteDelDia(AYER, "C1").ventas, 3);
 
 // =======================================================================
 seccion("10. Renglones con piezas raras");
@@ -870,7 +877,7 @@ comprobar(
 );
 
 comprobar("sin PIN de VENTAS, nadie entra con ese PIN", sesionLib.verificarPin("4826").ok === false);
-sesionLib.guardarPinVentas("4826");
+sesionLib.guardarPinCuenta("ventas", "4826");
 const entrada = sesionLib.verificarPin("4826");
 comprobar(
   "con el PIN de VENTAS se entra como VENTAS",
@@ -914,8 +921,123 @@ comprobar(
     .ok === false
 );
 
-sesionLib.quitarPinVentas();
+sesionLib.quitarPinCuenta("ventas");
 comprobar("al quitar el PIN de VENTAS ya nadie entra con el", sesionLib.verificarPin("4826").ok === false);
+
+// =======================================================================
+seccion("15. La caja del tianguis (el SUNMI)");
+// =======================================================================
+const enTianguis = (id) => db.prepare("SELECT en_tianguis FROM modelos WHERE id = ?").get(id).en_tianguis;
+
+sesionLib.guardarPinCuenta("tianguis", "7391");
+const entradaTianguis = sesionLib.verificarPin("7391");
+comprobar(
+  "con el PIN de TIANGUIS se entra a cobrar en el tianguis",
+  entradaTianguis.ok &&
+    entradaTianguis.sesion.nombre === "TIANGUIS" &&
+    entradaTianguis.sesion.lugar === "tianguis" &&
+    !sesionLib.esDuenio(entradaTianguis.sesion),
+  JSON.stringify(entradaTianguis)
+);
+comprobar("TIANGUIS tampoco aparece en la lista de quien vende", !quienesVenden().some((v) => v.nombre === "TIANGUIS"));
+iguales("una sesion de antes, sin lugar, es de la tienda", sesionLib.lugarDeSesion({ id: 5, nombre: "X", rol: "vendedora", vence: 0 }), "tienda");
+
+db.prepare("UPDATE modelos SET en_tianguis = 3 WHERE id = ?").run(C.id);
+const tiendaDeC = enTienda(C.id);
+const bodegaDeC = existenciaDe(C.id);
+iguales(
+  "el catalogo del tianguis trae las piezas del tianguis",
+  catalogoParaCaja("tianguis").find((m) => m.id === C.id)?.piezas,
+  3
+);
+
+const corteTiendaAntes = corteDelDia(HOY, "C1").total;
+const ventaT = venta({ id: "prueba-tianguis-1", lineas: [linea(C, 2, 35000)], forma_pago: "efectivo", recibido: 70000 });
+const rT = registrarVenta({ ...ventaT, caja: "T1" });
+comprobar("se cobra en el tianguis", rT.ok === true, rT.ok ? "" : rT.error);
+comprobar("el folio del tianguis empieza con T1", rT.ok && rT.datos.folio.startsWith("T1-"), rT.ok ? rT.datos.folio : "");
+iguales("baja lo que hay en el tianguis", enTianguis(C.id), 1);
+iguales("la tienda no se toca", enTienda(C.id), tiendaDeC);
+iguales("la bodega no se toca", existenciaDe(C.id), bodegaDeC);
+iguales(
+  "en la bodega queda como venta del tianguis, con la cuenta del tianguis antes y despues",
+  db
+    .prepare("SELECT tipo, cantidad, existencia_antes, existencia_despues FROM movimientos WHERE nota = ?")
+    .get("Venta " + (rT.ok ? rT.datos.folio : "")),
+  { tipo: "venta_tianguis", cantidad: 2, existencia_antes: 3, existencia_despues: 1 }
+);
+iguales("el corte del tianguis cuenta su venta", corteDelDia(HOY, "T1").total, 70000);
+iguales("y el de la tienda no cambia", corteDelDia(HOY, "C1").total, corteTiendaAntes);
+iguales("Ventas del dia del tianguis trae solo lo suyo", ventasDelDia(HOY, "T1").map((v) => v.id), ["prueba-tianguis-1"]);
+
+// Se vende aunque no alcance, incluso con el candado de la tienda prendido.
+db.prepare(
+  "INSERT INTO caja_config (clave, valor) VALUES ('bloquear_sin_existencia', '1') ON CONFLICT(clave) DO UPDATE SET valor = '1'"
+).run();
+const rSinPiezas = registrarVenta({
+  ...venta({ id: "prueba-tianguis-2", lineas: [linea(C, 4, 35000)], forma_pago: "tarjeta" }),
+  caja: "T1",
+});
+comprobar("en el tianguis se vende aunque el sistema diga que no hay", rSinPiezas.ok === true, rSinPiezas.ok ? "" : rSinPiezas.error);
+comprobar(
+  "y avisa que en el tianguis no habia",
+  rSinPiezas.ok && rSinPiezas.datos.avisos.some((a) => a.includes("el tianguis")),
+  rSinPiezas.ok ? JSON.stringify(rSinPiezas.datos.avisos) : ""
+);
+iguales("la cuenta del tianguis queda en negativo, para cuadrarla despues", enTianguis(C.id), -3);
+db.prepare("UPDATE caja_config SET valor = '0' WHERE clave = 'bloquear_sin_existencia'").run();
+
+const cT = cancelarVenta("prueba-tianguis-2", "prueba", "TIANGUIS");
+comprobar("se cancela un ticket del tianguis", cT.ok === true, cT.ok ? "" : cT.error);
+iguales("las piezas regresan al tianguis", enTianguis(C.id), 1);
+comprobar(
+  "y queda como cancelacion del tianguis",
+  Boolean(db.prepare("SELECT 1 FROM movimientos WHERE tipo = 'cancelacion_tianguis' AND nota LIKE ?").get(`%${rSinPiezas.ok ? rSinPiezas.datos.folio : ""}%`))
+);
+
+// Una venta del tianguis que se cobro sin senal y se sube con otra cuenta.
+const rSubida = registrarVenta(
+  { ...venta({ id: "prueba-tianguis-3", lineas: [linea(C, 1, 35000)], forma_pago: "tarjeta" }), caja: "T1" },
+  "C1"
+);
+comprobar(
+  "una venta del tianguis cae en el tianguis aunque la suba la tienda",
+  rSubida.ok && rSubida.datos.folio.startsWith("T1-") && enTianguis(C.id) === 0
+);
+const rRara = registrarVenta(
+  { ...venta({ id: "prueba-caja-rara", lineas: [linea(D, 1, 35000)], forma_pago: "tarjeta" }), caja: "X9" },
+  "C1"
+);
+comprobar("una caja que no existe no se inventa: cae en la de quien sube", rRara.ok && rRara.datos.folio.startsWith("C1-"));
+
+// Cada lugar tiene sus vendedoras: en el tianguis no salen las de la tienda.
+comprobar(
+  "una base de antes recibe la columna de donde vende cada quien",
+  db.prepare("PRAGMA table_info(caja_vendedoras)").all().some((c) => c.name === "vende_en")
+);
+const ponerVendeEn = db.prepare(
+  `INSERT INTO caja_vendedoras (personal_id, vende_en) VALUES (?, ?)
+   ON CONFLICT(personal_id) DO UPDATE SET vende_en = excluded.vende_en`
+);
+const ids = (lugar) => quienesVenden(lugar).map((v) => v.id);
+comprobar("quien no dice donde vende es de la tienda", ids("tienda").includes(vendedora.id) && !ids("tianguis").includes(vendedora.id));
+const deTianguis = Number(
+  db.prepare("INSERT INTO personal (nombre, puesto) VALUES ('MARTHA DEL TIANGUIS', 'vendedora')").run().lastInsertRowid
+);
+ponerVendeEn.run(deTianguis, "tianguis");
+comprobar("la del tianguis sale en el tianguis", ids("tianguis").includes(deTianguis));
+comprobar("y no sale en la tienda", !ids("tienda").includes(deTianguis));
+ponerVendeEn.run(vendedora.id, "ambos");
+comprobar("la que vende en los dos lados sale en los dos", ids("tienda").includes(vendedora.id) && ids("tianguis").includes(vendedora.id));
+sesionLib.guardarPinCuenta("tianguis", "7391");
+comprobar(
+  "cambiar donde vende no le borra su PIN a nadie ni se lo pone",
+  sesionLib.verificarPin("7391").ok && !db.prepare("SELECT 1 FROM caja_vendedoras WHERE personal_id = ? AND pin_hash <> ''").get(deTianguis)
+);
+ponerVendeEn.run(vendedora.id, "tienda");
+
+sesionLib.quitarPinCuenta("tianguis");
+comprobar("al quitar el PIN de TIANGUIS ya nadie entra con el", sesionLib.verificarPin("7391").ok === false);
 
 // --- Recoger -----------------------------------------------------------
 db.close();

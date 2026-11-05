@@ -1,34 +1,61 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { agregarVendedora, ponerPin, ponerPinVentas, quitarPin, quitarPinDeVentas } from "@/acciones/vendedoras";
+import {
+  agregarVendedora,
+  cambiarVendeEn,
+  ponerPin,
+  ponerPinCuenta,
+  quitarPin,
+  quitarPinDeCuenta,
+} from "@/acciones/vendedoras";
+import { OPCIONES_VENDE_EN, type VendeEn } from "@/lib/lugar";
 import type { Vendedora } from "@/lib/consultas";
 import { Aviso, Boton, Insignia, Tarjeta } from "./ui";
 import { IconoCandado, IconoPersona } from "./iconos";
 
-/** El mismo nombre que NOMBRE_CUENTA_VENTAS de lib/sesion, que no se puede importar aqui (es del servidor). */
-const NOMBRE_VENTAS = "VENTAS";
+type Cuenta = "ventas" | "tianguis";
+
+/**
+ * Las cuentas compartidas, como las define CUENTAS en lib/sesion (que es
+ * del servidor y no se puede importar aqui).
+ */
+const CUENTAS_COMPARTIDAS: { cuenta: Cuenta; nombre: string; explicacion: string }[] = [
+  {
+    cuenta: "ventas",
+    nombre: "VENTAS",
+    explicacion: "Para la tienda: con este PIN entran todas a cobrar y se descuenta de lo que hay en la tienda.",
+  },
+  {
+    cuenta: "tianguis",
+    nombre: "TIANGUIS",
+    explicacion:
+      "Para el tianguis (el SUNMI): con este PIN la caja cobra y descuenta de lo que hay en el tianguis. Sus tickets empiezan con T.",
+  },
+];
 
 /**
  * Las vendedoras y los PIN para entrar. La lista sale del personal que ya
  * capturaron en la bodega: es la misma gente, no hay por que escribirla dos
  * veces. Una vendedora no necesita PIN para aparecer al cobrar: basta con
- * que este en la lista. El PIN de VENTAS es el que usan todas para entrar.
+ * que este en la lista. Para entrar se usan los PIN de VENTAS y TIANGUIS.
  */
 export default function GestorVendedoras({
   personal,
-  hayPinVentas,
+  conPin,
 }: {
   personal: Vendedora[];
-  hayPinVentas: boolean;
+  /** Que cuentas compartidas ya tienen PIN. */
+  conPin: Record<Cuenta, boolean>;
 }) {
   const [editando, setEditando] = useState<number | null>(null);
   const [pin, setPin] = useState("");
   const [rol, setRol] = useState("vendedora");
   const [aviso, setAviso] = useState<{ tipo: "ok" | "error"; texto: string } | null>(null);
   const [nombreNueva, setNombreNueva] = useState("");
-  const [pinVentas, setPinVentas] = useState("");
-  const [editandoVentas, setEditandoVentas] = useState(false);
+  const [vendeEnNueva, setVendeEnNueva] = useState<VendeEn>("tienda");
+  const [pinCuenta, setPinCuenta] = useState("");
+  const [editandoCuenta, setEditandoCuenta] = useState<Cuenta | null>(null);
   const [pendiente, empezar] = useTransition();
 
   const avisar = (resultado: { ok: true; mensaje?: string } | { ok: false; error: string }) =>
@@ -36,13 +63,13 @@ export default function GestorVendedoras({
       resultado.ok ? { tipo: "ok", texto: resultado.mensaje ?? "Listo." } : { tipo: "error", texto: resultado.error }
     );
 
-  const guardarVentas = () => {
+  const guardarCuenta = (cuenta: Cuenta) => {
     empezar(async () => {
-      const resultado = await ponerPinVentas(pinVentas);
+      const resultado = await ponerPinCuenta(cuenta, pinCuenta);
       avisar(resultado);
       if (resultado.ok) {
-        setPinVentas("");
-        setEditandoVentas(false);
+        setPinCuenta("");
+        setEditandoCuenta(null);
       }
     });
   };
@@ -74,7 +101,7 @@ export default function GestorVendedoras({
 
   const darDeAlta = () => {
     empezar(async () => {
-      const resultado = await agregarVendedora(nombreNueva, "Vendedora");
+      const resultado = await agregarVendedora(nombreNueva, "Vendedora", vendeEnNueva);
       if (resultado.ok) {
         setAviso({ tipo: "ok", texto: resultado.mensaje ?? "Listo." });
         setNombreNueva("");
@@ -88,69 +115,71 @@ export default function GestorVendedoras({
     <div className="space-y-4">
       {aviso ? <Aviso tipo={aviso.tipo === "ok" ? "ok" : "error"}>{aviso.texto}</Aviso> : null}
 
-      <Tarjeta>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="etiqueta mb-1">PIN de la caja: {NOMBRE_VENTAS}</p>
-            <p className="max-w-xl text-sm text-humo">
-              Con este PIN entran todas a cobrar. Al cobrar se elige de la lista quien hizo la venta.{" "}
-              {NOMBRE_VENTAS} no es una vendedora: no aparece en la lista ni en la bodega.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {hayPinVentas ? (
-              <Insignia tono="ok">
-                <IconoCandado tamano={13} /> Con PIN
-              </Insignia>
-            ) : (
-              <Insignia tono="aviso">Sin PIN</Insignia>
-            )}
-            <Boton
-              onClick={() => {
-                setEditandoVentas((abierto) => !abierto);
-                setPinVentas("");
-              }}
-            >
-              {hayPinVentas ? "Cambiar PIN" : "Poner PIN"}
-            </Boton>
-            {hayPinVentas ? (
-              <Boton
-                variante="peligro"
-                onClick={() => empezar(async () => avisar(await quitarPinDeVentas()))}
-                disabled={pendiente}
-              >
-                Quitar
-              </Boton>
-            ) : null}
-          </div>
-        </div>
-
-        {editandoVentas ? (
-          <div className="mt-3 flex flex-wrap items-end gap-3 rounded-sm border border-linea bg-crema p-3">
+      {CUENTAS_COMPARTIDAS.map(({ cuenta, nombre, explicacion }) => (
+        <Tarjeta key={cuenta}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <label className="etiqueta" htmlFor="pin-ventas">
-                PIN nuevo
-              </label>
-              <input
-                id="pin-ventas"
-                className="campo sin-flechas w-40 text-lg"
-                inputMode="numeric"
-                value={pinVentas}
-                maxLength={8}
-                onChange={(e) => setPinVentas(e.target.value.replace(/\D/g, ""))}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") guardarVentas();
-                }}
-                placeholder="4 numeros"
-                autoComplete="off"
-              />
+              <p className="etiqueta mb-1">PIN de la caja: {nombre}</p>
+              <p className="max-w-xl text-sm text-humo">
+                {explicacion} Al cobrar se elige quien hizo la venta. {nombre} no es una vendedora: no aparece en
+                la lista ni en la bodega.
+              </p>
             </div>
-            <Boton variante="primario" onClick={guardarVentas} disabled={pendiente}>
-              Guardar
-            </Boton>
+            <div className="flex items-center gap-2">
+              {conPin[cuenta] ? (
+                <Insignia tono="ok">
+                  <IconoCandado tamano={13} /> Con PIN
+                </Insignia>
+              ) : (
+                <Insignia tono="aviso">Sin PIN</Insignia>
+              )}
+              <Boton
+                onClick={() => {
+                  setEditandoCuenta((abierta) => (abierta === cuenta ? null : cuenta));
+                  setPinCuenta("");
+                }}
+              >
+                {conPin[cuenta] ? "Cambiar PIN" : "Poner PIN"}
+              </Boton>
+              {conPin[cuenta] ? (
+                <Boton
+                  variante="peligro"
+                  onClick={() => empezar(async () => avisar(await quitarPinDeCuenta(cuenta)))}
+                  disabled={pendiente}
+                >
+                  Quitar
+                </Boton>
+              ) : null}
+            </div>
           </div>
-        ) : null}
-      </Tarjeta>
+
+          {editandoCuenta === cuenta ? (
+            <div className="mt-3 flex flex-wrap items-end gap-3 rounded-sm border border-linea bg-crema p-3">
+              <div>
+                <label className="etiqueta" htmlFor={`pin-${cuenta}`}>
+                  PIN nuevo
+                </label>
+                <input
+                  id={`pin-${cuenta}`}
+                  className="campo sin-flechas w-40 text-lg"
+                  inputMode="numeric"
+                  value={pinCuenta}
+                  maxLength={8}
+                  onChange={(e) => setPinCuenta(e.target.value.replace(/\D/g, ""))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") guardarCuenta(cuenta);
+                  }}
+                  placeholder="4 numeros"
+                  autoComplete="off"
+                />
+              </div>
+              <Boton variante="primario" onClick={() => guardarCuenta(cuenta)} disabled={pendiente}>
+                Guardar
+              </Boton>
+            </div>
+          ) : null}
+        </Tarjeta>
+      ))}
 
       <Tarjeta>
         <p className="etiqueta">Agregar una vendedora</p>
@@ -167,12 +196,30 @@ export default function GestorVendedoras({
               autoComplete="off"
             />
           </div>
+          <div>
+            <label className="etiqueta" htmlFor="vende-en-nueva">
+              Vende en
+            </label>
+            <select
+              id="vende-en-nueva"
+              className="campo !w-36"
+              value={vendeEnNueva}
+              onChange={(e) => setVendeEnNueva(e.target.value as VendeEn)}
+            >
+              {OPCIONES_VENDE_EN.map((o) => (
+                <option key={o.valor} value={o.valor}>
+                  {o.nombre}
+                </option>
+              ))}
+            </select>
+          </div>
           <Boton variante="primario" onClick={darDeAlta} disabled={pendiente || nombreNueva.trim().length < 2}>
             Agregar
           </Boton>
         </div>
         <p className="mt-2 text-xs text-humo">
-          Queda en la misma lista de personal del sistema de bodega, no en una aparte.
+          Queda en la misma lista de personal del sistema de bodega, no en una aparte. Al cobrar solo aparecen las
+          que venden en ese lugar: en el tianguis no salen las de la tienda.
         </p>
       </Tarjeta>
 
@@ -198,7 +245,27 @@ export default function GestorVendedoras({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Donde sale al cobrar. Se guarda en cuanto se cambia. */}
+                  <label className="sr-only" htmlFor={`vende-en-${persona.id}`}>
+                    Donde vende {persona.nombre}
+                  </label>
+                  <select
+                    id={`vende-en-${persona.id}`}
+                    className="campo !w-36 !py-1.5 text-sm"
+                    value={persona.vende_en}
+                    disabled={pendiente}
+                    onChange={(e) => {
+                      const valor = e.target.value;
+                      empezar(async () => avisar(await cambiarVendeEn(persona.id, valor)));
+                    }}
+                  >
+                    {OPCIONES_VENDE_EN.map((o) => (
+                      <option key={o.valor} value={o.valor}>
+                        {o.nombre}
+                      </option>
+                    ))}
+                  </select>
                   {persona.rol === "duenio" ? <Insignia tono="vino">Duenio</Insignia> : null}
                   {persona.tiene_pin ? (
                     <Insignia tono="ok">

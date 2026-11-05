@@ -15,11 +15,14 @@ import { Aviso, Boton, Cifra, Insignia, Tarjeta } from "./ui";
  * separa porque ese dinero nunca paso por ahi.
  */
 export default function PanelCorte({
+  caja,
   corte,
   cerrado,
   contado,
   diferencia,
 }: {
+  /** De que caja es este corte: la tienda y el tianguis llevan cajon aparte. */
+  caja: string;
   corte: CorteDelDia;
   cerrado: boolean;
   contado: number | null;
@@ -142,7 +145,7 @@ export default function PanelCorte({
                     onChange={(e) => setFondo(e.target.value)}
                   />
                 </div>
-                <Boton onClick={() => correr(() => guardarFondo(aCentavos(fondo) ?? 0))} disabled={pendiente}>
+                <Boton onClick={() => correr(() => guardarFondo(aCentavos(fondo) ?? 0, caja))} disabled={pendiente}>
                   Guardar fondo
                 </Boton>
               </div>
@@ -176,7 +179,7 @@ export default function PanelCorte({
                 <Boton
                   onClick={() =>
                     correr(async () => {
-                      const r = await registrarRetiro(aCentavos(retiro) ?? 0, motivo);
+                      const r = await registrarRetiro(aCentavos(retiro) ?? 0, motivo, caja);
                       if (r.ok) {
                         setRetiro("");
                         setMotivo("");
@@ -219,7 +222,7 @@ export default function PanelCorte({
                 <Boton
                   variante="primario"
                   onClick={() =>
-                    correr(() => cerrarCorte(aCentavos(efectivo) ?? 0, corte.efectivo_esperado, nota))
+                    correr(() => cerrarCorte(aCentavos(efectivo) ?? 0, corte.efectivo_esperado, nota, caja))
                   }
                   disabled={pendiente || !efectivo}
                 >

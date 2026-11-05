@@ -1,8 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getDb, guardarAjuste, nombreCaja } from "@/lib/db";
-import { sesionActual } from "@/lib/sesion";
+import { cajaDeLugar, claveFondo, esCajaConocida, getDb, guardarAjuste } from "@/lib/db";
+import { esDuenio, lugarDeSesion, sesionActual, type Sesion } from "@/lib/sesion";
 import type { Resultado } from "@/lib/tipos";
 
 /**
@@ -13,10 +13,20 @@ import type { Resultado } from "@/lib/tipos";
  * abrio, los retiros del dia, y el conteo del efectivo al cerrar.
  */
 
+/**
+ * La caja cuyo corte se toca. Cada quien la de su lugar; el duenio puede
+ * tocar cualquiera, porque desde Ventas del dia revisa la tienda y el
+ * tianguis.
+ */
+function cajaDelCorte(sesion: Sesion, pedida?: string): string {
+  const propia = cajaDeLugar(lugarDeSesion(sesion));
+  const limpia = (pedida ?? "").trim().toUpperCase();
+  return esDuenio(sesion) && limpia && esCajaConocida(limpia) ? limpia : propia;
+}
+
 /** El corte del dia se abre solo con la primera venta; esto lo alcanza o lo crea. */
-function corteDeHoy(): { id: number; dia: string } {
+function corteDeHoy(caja: string): { id: number; dia: string } {
   const db = getDb();
-  const caja = nombreCaja();
   const hoy = (db.prepare("SELECT date('now','localtime') AS d").get() as { d: string }).d;
 
   const existente = db.prepare("SELECT id FROM caja_cortes WHERE caja = ? AND dia = ?").get(caja, hoy) as
@@ -34,25 +44,26 @@ function corteDeHoy(): { id: number; dia: string } {
  * El fondo se guarda tambien como ajuste porque casi siempre es el mismo
  * todos los dias: asi nadie tiene que capturarlo cada manana.
  */
-export async function guardarFondo(centavos: number): Promise<Resultado> {
+export async function guardarFondo(centavos: number, caja?: string): Promise<Resultado> {
   const sesion = await sesionActual();
   if (!sesion) return { ok: false, error: "La sesion se cerro. Vuelve a entrar con tu PIN." };
   if (!Number.isFinite(centavos) || centavos < 0) return { ok: false, error: "El fondo no puede ser negativo." };
 
-  const { id } = corteDeHoy();
+  const deLaCaja = cajaDelCorte(sesion, caja);
+  const { id } = corteDeHoy(deLaCaja);
   getDb().prepare("UPDATE caja_cortes SET fondo = ? WHERE id = ?").run(Math.round(centavos), id);
-  guardarAjuste("fondo_inicial", String(Math.round(centavos)));
+  guardarAjuste(claveFondo(deLaCaja), String(Math.round(centavos)));
   revalidatePath("/ventas");
   return { ok: true, mensaje: "Se guardo el fondo con el que abrio la caja." };
 }
 
-export async function registrarRetiro(centavos: number, motivo: string): Promise<Resultado> {
+export async function registrarRetiro(centavos: number, motivo: string, caja?: string): Promise<Resultado> {
   const sesion = await sesionActual();
   if (!sesion) return { ok: false, error: "La sesion se cerro. Vuelve a entrar con tu PIN." };
   if (!Number.isFinite(centavos) || centavos <= 0) return { ok: false, error: "Escribe cuanto se saco del cajon." };
   if (!motivo.trim()) return { ok: false, error: "Escribe para que se saco el dinero." };
 
-  const { id } = corteDeHoy();
+  const { id } = corteDeHoy(cajaDelCorte(sesion, caja));
   getDb()
     .prepare(`INSERT INTO caja_retiros (corte_id, monto, motivo, persona) VALUES (?, ?, ?, ?)`)
     .run(id, Math.round(centavos), motivo.trim(), sesion.nombre);
@@ -65,14 +76,19 @@ export async function registrarRetiro(centavos: number, motivo: string): Promise
  * contra lo que el sistema esperaba. La diferencia no se corrige ni se
  * esconde: queda anotada, que es justo lo que sirve para revisarla despues.
  */
-export async function cerrarCorte(efectivoContado: number, esperado: number, nota: string): Promise<Resultado> {
+export async function cerrarCorte(
+  efectivoContado: number,
+  esperado: number,
+  nota: string,
+  caja?: string
+): Promise<Resultado> {
   const sesion = await sesionActual();
   if (!sesion) return { ok: false, error: "La sesion se cerro. Vuelve a entrar con tu PIN." };
   if (!Number.isFinite(efectivoContado) || efectivoContado < 0) {
     return { ok: false, error: "Escribe cuanto efectivo hay en el cajon." };
   }
 
-  const { id } = corteDeHoy();
+  const { id } = corteDeHoy(cajaDelCorte(sesion, caja));
   const diferencia = Math.round(efectivoContado) - Math.round(esperado);
 
   getDb()

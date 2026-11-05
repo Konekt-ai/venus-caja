@@ -18,7 +18,8 @@ export type ModeloCaja = {
   descripcion: string;
   categoria: string;
   precio: number;
-  en_tienda: number;
+  /** Piezas que hay donde se esta cobrando: en la tienda o en el tianguis. */
+  piezas: number;
   barras: string[];
 };
 
@@ -52,6 +53,11 @@ export type VentaParaGuardar = {
    * ocupado, el servidor asigna el siguiente libre y lo devuelve.
    */
   folio?: string;
+  /**
+   * La caja donde se cobro (C1 la tienda, T1 el tianguis). Va en la venta
+   * porque una cobrada sin internet se sube despues, quiza con otra cuenta.
+   */
+  caja?: string;
   /** Quien hizo la venta: se elige al cobrar. */
   vendedora_id: number | null;
   /**

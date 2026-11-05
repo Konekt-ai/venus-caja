@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { nombreCaja } from "@/lib/db";
+import { cajaDeLugar } from "@/lib/db";
 import { catalogoParaCaja, quienesVenden, ultimoFolio } from "@/lib/consultas";
-import { sesionActual } from "@/lib/sesion";
+import { lugarDeSesion, sesionActual } from "@/lib/sesion";
 
 export const dynamic = "force-dynamic";
 
@@ -16,12 +16,13 @@ export async function GET() {
   if (!sesion) return NextResponse.json({ ok: false, error: "La sesion se cerro." }, { status: 401 });
 
   try {
+    const lugar = lugarDeSesion(sesion);
     return NextResponse.json({
       ok: true,
-      catalogo: catalogoParaCaja(),
-      ultimo_folio: ultimoFolio(nombreCaja()),
+      catalogo: catalogoParaCaja(lugar),
+      ultimo_folio: ultimoFolio(cajaDeLugar(lugar)),
       // Una vendedora que dan de alta a media jornada aparece al cobrar sin recargar.
-      vendedoras: quienesVenden(),
+      vendedoras: quienesVenden(lugar),
     });
   } catch {
     // La base no contesto (disco ocupado, OneDrive a medias). La caja sigue

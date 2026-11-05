@@ -2,8 +2,8 @@ import { redirect } from "next/navigation";
 import Cobrar from "@/components/Cobrar";
 import { Aviso, BotonEnlace, Tarjeta } from "@/components/ui";
 import { catalogoParaCaja, nombreNegocio, quienesVenden, ultimoFolio } from "@/lib/consultas";
-import { nombreCaja } from "@/lib/db";
-import { sesionActual } from "@/lib/sesion";
+import { cajaDeLugar } from "@/lib/db";
+import { lugarDeSesion, sesionActual } from "@/lib/sesion";
 import type { ModeloCaja, QuienVende } from "@/lib/tipos";
 
 /**
@@ -24,7 +24,7 @@ export default async function Pagina() {
         <Tarjeta>
           <h1 className="titulo mb-3 text-2xl">Entraste como duenio</h1>
           <Aviso tipo="info">
-            Para cobrar hay que entrar con el PIN de VENTAS o con el de una vendedora. Al cobrar se elige quien
+            Para cobrar hay que entrar con el PIN de VENTAS (tienda), el de TIANGUIS o el de una vendedora. Al cobrar se elige quien
             hizo la venta.
           </Aviso>
           <div className="mt-5 flex flex-wrap gap-3">
@@ -39,14 +39,16 @@ export default async function Pagina() {
     );
   }
 
+  const lugar = lugarDeSesion(sesion);
+  const caja = cajaDeLugar(lugar);
+
   let catalogo: ModeloCaja[] = [];
   let vendedoras: QuienVende[] = [];
   let folio = 0;
   let negocio = "Venus Boutique";
   try {
-    catalogo = catalogoParaCaja();
-    vendedoras = quienesVenden();
-    const caja = nombreCaja();
+    catalogo = catalogoParaCaja(lugar);
+    vendedoras = quienesVenden(lugar);
     folio = ultimoFolio(caja);
     negocio = nombreNegocio();
   } catch (e) {
@@ -61,7 +63,8 @@ export default async function Pagina() {
       catalogoInicial={catalogo}
       vendedorasIniciales={vendedoras}
       cuenta={{ id: sesion.id, nombre: sesion.nombre }}
-      caja={nombreCaja()}
+      caja={caja}
+      lugar={lugar}
       negocio={negocio}
       ultimoFolio={folio}
     />

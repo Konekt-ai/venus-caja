@@ -2,26 +2,36 @@ import "server-only";
 import crypto from "node:crypto";
 import { cookies } from "next/headers";
 import { getDb, guardarAjuste, leerAjuste } from "./db";
+import type { Lugar } from "./lugar";
 
 /**
  * Quien esta cobrando.
  *
  * La URL de la caja es publica (la tienda entra por internet), asi que hay
  * llave desde el primer dia. Se entra con un PIN corto: el de una vendedora
- * o el PIN compartido de la caja (la cuenta VENTAS), con el que entran
- * todas. Quien VENDIO no sale de aqui: se elige al cobrar, porque en la
- * tienda una atiende a la clienta y otra le cobra.
+ * o el de una cuenta compartida (VENTAS en la tienda, TIANGUIS en el
+ * tianguis), con el que entran todas. Quien VENDIO no sale de aqui: se
+ * elige al cobrar, porque una atiende a la clienta y otra le cobra.
  */
 
 /**
- * La cuenta compartida con la que entran todas.
+ * Las cuentas compartidas con las que entran todas.
  *
- * No es una persona: no vive en 'personal' (asi no aparece en ninguna lista
+ * No son personas: no viven en 'personal' (asi no aparecen en ninguna lista
  * de vendedoras, ni aqui ni en la bodega) y su PIN se guarda en caja_config.
- * Lleva el id -1 porque el 0 ya es del duenio y los positivos son personas.
+ * Llevan ids negativos porque el 0 ya es del duenio y los positivos son
+ * personas. La cuenta decide el lugar: con TIANGUIS la caja descuenta de lo
+ * que hay en el tianguis.
  */
-export const ID_CUENTA_VENTAS = -1;
-export const NOMBRE_CUENTA_VENTAS = "VENTAS";
+export type CuentaCompartida = "ventas" | "tianguis";
+
+export const CUENTAS: Record<CuentaCompartida, { id: number; nombre: string; lugar: Lugar; clave: string }> = {
+  ventas: { id: -1, nombre: "VENTAS", lugar: "tienda", clave: "pin_ventas" },
+  tianguis: { id: -2, nombre: "TIANGUIS", lugar: "tianguis", clave: "pin_tianguis" },
+};
+
+export const ID_CUENTA_VENTAS = CUENTAS.ventas.id;
+export const NOMBRE_CUENTA_VENTAS = CUENTAS.ventas.nombre;
 
 const NOMBRE_COOKIE = "venus_caja";
 /** Doce horas: una jornada completa. Que no se cierre a media tarde. */
@@ -32,7 +42,13 @@ export type Sesion = {
   nombre: string;
   rol: string;
   vence: number;
+  /** Donde se cobra. Las sesiones de antes no lo traen: son de la tienda. */
+  lugar?: Lugar;
 };
+
+export function lugarDeSesion(sesion: Sesion | null): Lugar {
+  return sesion?.lugar === "tianguis" ? "tianguis" : "tienda";
+}
 
 function llave(): string {
   const configurada = process.env.VENUS_LLAVE_SESION?.trim();
@@ -71,21 +87,23 @@ export function guardarPin(personalId: number, pin: string, rol = "vendedora"): 
     .run(personalId, hash, sal, rol);
 }
 
-/** Pone o cambia el PIN de la cuenta VENTAS. */
-export function guardarPinVentas(pin: string): void {
+/** Pone o cambia el PIN de una cuenta compartida. */
+export function guardarPinCuenta(cuenta: CuentaCompartida, pin: string): void {
+  const { clave } = CUENTAS[cuenta];
   const sal = crypto.randomBytes(16).toString("base64");
-  guardarAjuste("pin_ventas_sal", sal);
-  guardarAjuste("pin_ventas_hash", derivarPin(pin, sal));
+  guardarAjuste(`${clave}_sal`, sal);
+  guardarAjuste(`${clave}_hash`, derivarPin(pin, sal));
 }
 
-/** Quita el PIN de la cuenta VENTAS: con eso ya nadie entra con ella. */
-export function quitarPinVentas(): void {
-  guardarAjuste("pin_ventas_hash", "");
-  guardarAjuste("pin_ventas_sal", "");
+/** Quita el PIN de una cuenta compartida: con eso ya nadie entra con ella. */
+export function quitarPinCuenta(cuenta: CuentaCompartida): void {
+  const { clave } = CUENTAS[cuenta];
+  guardarAjuste(`${clave}_hash`, "");
+  guardarAjuste(`${clave}_sal`, "");
 }
 
-export function hayPinVentas(): boolean {
-  return leerAjuste("pin_ventas_hash") !== "";
+export function hayPinCuenta(cuenta: CuentaCompartida): boolean {
+  return leerAjuste(`${CUENTAS[cuenta].clave}_hash`) !== "";
 }
 
 /** Compara en tiempo constante: el tiempo de respuesta no delata cuantos digitos iban bien. */
@@ -94,10 +112,14 @@ function coincide(pin: string, sal: string, hash: string): boolean {
   return intento.length === hash.length && crypto.timingSafeEqual(Buffer.from(intento), Buffer.from(hash));
 }
 
-/** true si ese PIN es el de la cuenta VENTAS. */
-export function esPinVentas(pin: string): boolean {
-  const hash = leerAjuste("pin_ventas_hash");
-  return hash !== "" && coincide(pin, leerAjuste("pin_ventas_sal"), hash);
+/** La cuenta compartida a la que le toca ese PIN, o null. */
+function cuentaDelPin(pin: string): CuentaCompartida | null {
+  for (const cuenta of Object.keys(CUENTAS) as CuentaCompartida[]) {
+    const { clave } = CUENTAS[cuenta];
+    const hash = leerAjuste(`${clave}_hash`);
+    if (hash !== "" && coincide(pin, leerAjuste(`${clave}_sal`), hash)) return cuenta;
+  }
+  return null;
 }
 
 export type Entrada = { ok: true; sesion: Sesion } | { ok: false; error: string };
@@ -130,15 +152,12 @@ export function verificarPin(pin: string): Entrada {
     }
   }
 
-  if (esPinVentas(limpio)) {
+  const cuenta = cuentaDelPin(limpio);
+  if (cuenta) {
+    const { id, nombre, lugar } = CUENTAS[cuenta];
     return {
       ok: true,
-      sesion: {
-        id: ID_CUENTA_VENTAS,
-        nombre: NOMBRE_CUENTA_VENTAS,
-        rol: "vendedora",
-        vence: Date.now() + DURACION_HORAS * 3600 * 1000,
-      },
+      sesion: { id, nombre, rol: "vendedora", lugar, vence: Date.now() + DURACION_HORAS * 3600 * 1000 },
     };
   }
 
@@ -208,7 +227,7 @@ export function pinDelDuenio(): string {
 }
 
 export function hayAlgunPin(): boolean {
-  if (hayPinVentas()) return true;
+  if (hayPinCuenta("ventas") || hayPinCuenta("tianguis")) return true;
   const fila = getDb()
     .prepare(`SELECT COUNT(*) AS n FROM caja_vendedoras WHERE pin_hash <> '' AND activa = 1`)
     .get() as { n: number };

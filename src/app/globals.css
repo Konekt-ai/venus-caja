@@ -157,6 +157,14 @@ input[type="number"].sin-flechas {
   appearance: textfield;
 }
 
+/* En el telefono, 16px: menos que eso y el navegador acerca la pantalla al
+   tocar el campo, y hay que pellizcar para volver. */
+@media (max-width: 639px) {
+  .campo {
+    font-size: 1rem;
+  }
+}
+
 /* El buscador de la caja es el corazon del sistema: se ve mas grande que
    un campo normal porque es donde vive el cursor todo el dia. */
 .campo-buscador {

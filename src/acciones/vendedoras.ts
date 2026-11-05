@@ -3,16 +3,17 @@
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import {
+  CUENTAS,
   esDuenio,
   guardarPin,
-  guardarPinVentas,
-  ID_CUENTA_VENTAS,
-  NOMBRE_CUENTA_VENTAS,
+  guardarPinCuenta,
   pinDelDuenio,
-  quitarPinVentas,
+  quitarPinCuenta,
   sesionActual,
   verificarPin,
+  type CuentaCompartida,
 } from "@/lib/sesion";
+import { EL_LUGAR, esVendeEn, type VendeEn } from "@/lib/lugar";
 import type { Resultado } from "@/lib/tipos";
 
 /**
@@ -57,29 +58,34 @@ function pinOcupado(pin: string, propio: number): string | null {
   return null;
 }
 
-/** El PIN de la cuenta VENTAS, con el que entran todas a cobrar. */
-export async function ponerPinVentas(pin: string): Promise<Resultado> {
+/**
+ * El PIN de una cuenta compartida, con el que entran todas a cobrar:
+ * VENTAS en la tienda, TIANGUIS en el tianguis.
+ */
+export async function ponerPinCuenta(cuenta: CuentaCompartida, pin: string): Promise<Resultado> {
   const sesion = await sesionActual();
   if (!esDuenio(sesion)) return { ok: false, error: "Solo el duenio puede cambiar los PIN." };
+  if (!CUENTAS[cuenta]) return { ok: false, error: "Esa cuenta no existe." };
 
   const limpio = (pin ?? "").trim();
   if (!/^\d{4,8}$/.test(limpio)) return { ok: false, error: "El PIN son de 4 a 8 numeros." };
 
-  const ocupado = pinOcupado(limpio, ID_CUENTA_VENTAS);
+  const ocupado = pinOcupado(limpio, CUENTAS[cuenta].id);
   if (ocupado) return { ok: false, error: ocupado };
 
-  guardarPinVentas(limpio);
+  guardarPinCuenta(cuenta, limpio);
   revalidatePath("/vendedoras");
-  return { ok: true, mensaje: `Listo: con ese PIN entran todas como ${NOMBRE_CUENTA_VENTAS}.` };
+  return { ok: true, mensaje: `Listo: con ese PIN entran todas como ${CUENTAS[cuenta].nombre}.` };
 }
 
-export async function quitarPinDeVentas(): Promise<Resultado> {
+export async function quitarPinDeCuenta(cuenta: CuentaCompartida): Promise<Resultado> {
   const sesion = await sesionActual();
   if (!esDuenio(sesion)) return { ok: false, error: "Solo el duenio puede cambiar los PIN." };
+  if (!CUENTAS[cuenta]) return { ok: false, error: "Esa cuenta no existe." };
 
-  quitarPinVentas();
+  quitarPinCuenta(cuenta);
   revalidatePath("/vendedoras");
-  return { ok: true, mensaje: `Se quito el PIN de ${NOMBRE_CUENTA_VENTAS}. Ya nadie entra con el.` };
+  return { ok: true, mensaje: `Se quito el PIN de ${CUENTAS[cuenta].nombre}. Ya nadie entra con el.` };
 }
 
 export async function quitarPin(personalId: number): Promise<Resultado> {
@@ -102,7 +108,39 @@ export async function quitarPin(personalId: number): Promise<Resultado> {
  * de la bodega puede estar vacia, y sin gente en esa tabla nadie podria
  * cobrar.
  */
-export async function agregarVendedora(nombre: string, puesto: string): Promise<Resultado> {
+/**
+ * Donde vende una persona del personal: tienda, tianguis o los dos.
+ *
+ * Se guarda en caja_vendedoras aunque no tenga PIN: ahi viven los datos que
+ * solo le importan a la caja. Si todavia no tenia renglon se crea sin PIN,
+ * que es lo normal cuando entran con la cuenta compartida.
+ */
+function guardarVendeEn(personalId: number, vendeEn: VendeEn): void {
+  getDb()
+    .prepare(
+      `INSERT INTO caja_vendedoras (personal_id, vende_en) VALUES (?, ?)
+       ON CONFLICT(personal_id) DO UPDATE SET vende_en = excluded.vende_en`
+    )
+    .run(personalId, vendeEn);
+}
+
+export async function cambiarVendeEn(personalId: number, vendeEn: string): Promise<Resultado> {
+  const sesion = await sesionActual();
+  if (!esDuenio(sesion)) return { ok: false, error: "Solo el duenio puede cambiar donde vende cada quien." };
+  if (!esVendeEn(vendeEn)) return { ok: false, error: "Elige tienda, tianguis o los dos." };
+
+  const persona = getDb().prepare("SELECT nombre FROM personal WHERE id = ?").get(personalId) as
+    | { nombre: string }
+    | undefined;
+  if (!persona) return { ok: false, error: "No se encontro a esa persona en el personal de la bodega." };
+
+  guardarVendeEn(personalId, vendeEn);
+  revalidatePath("/vendedoras");
+  const donde = vendeEn === "ambos" ? "en la tienda y en el tianguis" : `en ${EL_LUGAR[vendeEn]}`;
+  return { ok: true, mensaje: `${persona.nombre} sale al cobrar ${donde}.` };
+}
+
+export async function agregarVendedora(nombre: string, puesto: string, vendeEn = "tienda"): Promise<Resultado> {
   const sesion = await sesionActual();
   if (!esDuenio(sesion)) return { ok: false, error: "Solo el duenio puede dar de alta vendedoras." };
 
@@ -116,11 +154,13 @@ export async function agregarVendedora(nombre: string, puesto: string): Promise<
   if (repetida) return { ok: false, error: `${limpio} ya esta en la lista.` };
 
   const orden = (db.prepare("SELECT COALESCE(MAX(orden),0) + 1 AS n FROM personal").get() as { n: number }).n;
-  db.prepare("INSERT INTO personal (nombre, puesto, activo, orden) VALUES (?, ?, 1, ?)").run(
-    limpio,
-    puesto.trim() || "Vendedora",
-    orden
-  );
+  const alta = db.transaction(() => {
+    const info = db
+      .prepare("INSERT INTO personal (nombre, puesto, activo, orden) VALUES (?, ?, 1, ?)")
+      .run(limpio, puesto.trim() || "Vendedora", orden);
+    guardarVendeEn(Number(info.lastInsertRowid), esVendeEn(vendeEn) ? vendeEn : "tienda");
+  });
+  alta();
 
   revalidatePath("/vendedoras");
   return { ok: true, mensaje: `${limpio} quedo en la lista: ya se puede elegir al cobrar.` };

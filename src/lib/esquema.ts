@@ -26,7 +26,10 @@ CREATE TABLE IF NOT EXISTS caja_vendedoras (
   pin_sal      TEXT    NOT NULL DEFAULT '',
   rol          TEXT    NOT NULL DEFAULT 'vendedora',
   activa       INTEGER NOT NULL DEFAULT 1,
-  creado_en    TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+  creado_en    TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+  -- Donde vende: 'tienda', 'tianguis' o 'ambos'. Al cobrar solo aparecen
+  -- las del lugar. Quien no tiene renglon aqui es de la tienda.
+  vende_en     TEXT    NOT NULL DEFAULT 'tienda'
 );
 
 -- El catalogo de bodega no trae precios: se capturan aqui. Se guarda en
