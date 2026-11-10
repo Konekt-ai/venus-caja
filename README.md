@@ -149,28 +149,31 @@ TIANGUIS** (el duenio lo pone en **Vendedoras**). Con esa cuenta la caja:
 Todo lo demas es igual: se elige quien vendio, varias prendas por ticket,
 descuentos, precio de una sola venta y sigue cobrando sin senal.
 
-### Inventario del tianguis
+### Inventario (tienda y tianguis)
 
-Con la cuenta TIANGUIS, debajo del encabezado van las pestanas **Cobrar |
-Inventario**, a lo ancho para tocarlas con el pulgar. Inventario es una
-pantalla aparte (para no llenar la de cobrar) con cuatro pestanas:
+Debajo del encabezado van las pestanas **Cobrar | Inventario**, a lo ancho
+para tocarlas con el pulgar. Las ve cualquiera que cobre: con VENTAS o con
+el PIN de una vendedora, el inventario es el de la **tienda**; con TIANGUIS,
+el del **tianguis**. El duenio no las ve (no cobra). Inventario es una
+pantalla aparte, para no llenar la de cobrar:
 
-- **Lo que hay**: lo que esta en el tianguis, igual que *Tianguis >
-  Inventario* en el sistema de bodega (las piezas son las mismas, de la
-  misma base): codigo, piezas, tallas y precio, con buscador. Tocar una
-  prenda la agrega a la venta, como si se hubiera escaneado.
-
+- **Lo que hay**: lo que esta en ese lugar (en el tianguis, igual que
+  *Tianguis > Inventario* del sistema de bodega; las piezas son las mismas,
+  de la misma base): codigo, piezas, tallas y precio, con buscador. Tocar
+  una prenda la agrega a la venta, como si se hubiera escaneado.
 - **Recibir**: se escanea lo que llego de la bodega (la misma prenda otra
-  vez suma una pieza) y se registra. Baja la bodega y sube el tianguis. Si
-  la bodega no tenia esas piezas registradas se recibe igual: queda en
-  negativo y se cuadra en el conteo.
+  vez suma una pieza) y se registra. Baja la bodega y sube la tienda o el
+  tianguis. Si la bodega no tenia esas piezas registradas se recibe igual:
+  queda en negativo y se cuadra en el conteo.
 - **Regresar**: lo que vuelve a la bodega, escaneado o con las piezas de la
-  lista. No deja regresar mas de lo que hay en el tianguis.
-- **Cierre del dia**: todo lo que quedo regresa a la bodega de un jalon.
+  lista. No deja regresar mas de lo que hay.
+- **Cierre del dia** (solo el tianguis): todo lo que quedo regresa a la
+  bodega de un jalon.
 
-Cada uno deja su hoja con folio (`TIA-0001`), del mismo contador y con los
-mismos movimientos que Salidas y el Cierre del sistema de bodega, firmada
-por TIANGUIS. Desde la bodega se siguen pudiendo hacer igual.
+Cada uno deja su hoja con folio (`TIE-0001` la tienda, `TIA-0001` el
+tianguis), del mismo contador y con los mismos movimientos que Salidas y el
+Cierre del sistema de bodega, firmada por la cuenta con la que se entro.
+Desde la bodega se siguen pudiendo hacer igual.
 
 ### En el telefono
 

@@ -2,11 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { cierreDelDia, recibir, regresar } from "@/acciones/inventarioTianguis";
+import { cierreDelDia, recibir, regresar } from "@/acciones/inventario";
 import { buscar, hayEmpate, partirCantidad } from "@/lib/busqueda";
 import { normalizarCodigo, normalizarTexto, partirCodigo } from "@/lib/codigos";
 import { pesos } from "@/lib/dinero";
-import type { PrendaDelTianguis } from "@/lib/movimientosTianguis";
+import { EL_LUGAR, type Lugar } from "@/lib/lugar";
+import type { PrendaDelLugar } from "@/lib/movimientosDeLugar";
 import type { ModeloCaja } from "@/lib/tipos";
 import { Aviso, Boton, Tarjeta } from "./ui";
 import { IconoBuscar, IconoCerrar, IconoMas, IconoMenos } from "./iconos";
@@ -27,18 +28,21 @@ function piezas(n: number) {
 }
 
 /**
- * Lo que entra y sale del tianguis: recibir de bodega, regresar a bodega y
- * el cierre del dia. Va en su propia pantalla, aparte de cobrar, para que la
+ * Lo que entra y sale del lugar donde se cobra (la tienda o el tianguis):
+ * lo que hay, recibir de bodega, regresar a bodega y, en el tianguis, el
+ * cierre del dia. Va en su propia pantalla, aparte de cobrar, para que la
  * de cobrar no se llene de botones que no son de vender.
  */
-export default function PanelInventarioTianguis({
+export default function PanelInventario({
+  lugar,
   catalogo,
   bodega,
-  enTianguis,
+  prendas,
 }: {
+  lugar: Lugar;
   catalogo: ModeloCaja[];
   bodega: Record<number, number>;
-  enTianguis: PrendaDelTianguis[];
+  prendas: PrendaDelLugar[];
 }) {
   const [pestana, setPestana] = useState<Pestana>("hay");
   const [mensaje, setMensaje] = useState<Mensaje>(null);
@@ -64,8 +68,8 @@ export default function PanelInventarioTianguis({
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
-        {PESTANAS.map((p) => (
+      <div className={`grid gap-1.5 sm:gap-2 ${lugar === "tianguis" ? "grid-cols-4" : "grid-cols-3"}`}>
+        {PESTANAS.filter((p) => p.valor !== "cierre" || lugar === "tianguis").map((p) => (
           <button
             key={p.valor}
             type="button"
@@ -96,10 +100,11 @@ export default function PanelInventarioTianguis({
         </Aviso>
       ) : null}
 
-      {pestana === "hay" ? <LoQueHay enTianguis={enTianguis} /> : null}
+      {pestana === "hay" ? <LoQueHay lugar={lugar} prendas={prendas} /> : null}
 
       {pestana === "recibir" ? (
         <Recibir
+          lugar={lugar}
           catalogo={catalogo}
           bodega={bodega}
           pendiente={pendiente}
@@ -115,8 +120,9 @@ export default function PanelInventarioTianguis({
 
       {pestana === "regresar" ? (
         <Regresar
+          lugar={lugar}
           catalogo={catalogo}
-          enTianguis={enTianguis}
+          prendas={prendas}
           pendiente={pendiente}
           onRegistrar={(lineas, listo) =>
             empezar(async () => {
@@ -130,7 +136,7 @@ export default function PanelInventarioTianguis({
 
       {pestana === "cierre" ? (
         <Cierre
-          enTianguis={enTianguis}
+          prendas={prendas}
           pendiente={pendiente}
           onCerrar={() =>
             empezar(async () => {
@@ -146,22 +152,22 @@ export default function PanelInventarioTianguis({
 // ---------------------------------------------------------------------------
 
 /**
- * Lo que hay en el tianguis: la misma lista que "Tianguis > Inventario" del
- * sistema de bodega, con las piezas, el codigo, las tallas y el precio, y la
+ * Lo que hay en el lugar. En el tianguis es la misma lista que "Tianguis >
+ * Inventario" del sistema de bodega, con las piezas, el codigo, las tallas y el precio, y la
  * misma busqueda (84 encuentra 084, vd194 encuentra VD 194, o por nombre).
  * Igual que alla, tocar una prenda lleva a venderla.
  */
-function LoQueHay({ enTianguis }: { enTianguis: PrendaDelTianguis[] }) {
+function LoQueHay({ lugar, prendas }: { lugar: Lugar; prendas: PrendaDelLugar[] }) {
   const [busqueda, setBusqueda] = useState("");
   const router = useRouter();
 
   const lista = useMemo(() => {
     const texto = busqueda.trim();
-    if (!texto) return enTianguis;
+    if (!texto) return prendas;
     const codigo = normalizarCodigo(texto);
     const libre = normalizarTexto(texto);
     const { numero } = partirCodigo(texto);
-    return enTianguis
+    return prendas
       .map((p) => {
         let puntaje = 99;
         if (p.codigo_norm === codigo) puntaje = 0;
@@ -174,16 +180,16 @@ function LoQueHay({ enTianguis }: { enTianguis: PrendaDelTianguis[] }) {
       .filter((x) => x.puntaje < 99)
       .sort((a, b) => a.puntaje - b.puntaje || a.p.codigo.localeCompare(b.p.codigo))
       .map((x) => x.p);
-  }, [enTianguis, busqueda]);
+  }, [prendas, busqueda]);
 
-  const total = enTianguis.reduce((s, p) => s + p.en_tianguis, 0);
+  const total = prendas.reduce((s, p) => s + p.piezas, 0);
   const vender = (id: number) => router.push(`/?agregar=${id}`);
 
-  if (!enTianguis.length) {
+  if (!prendas.length) {
     return (
       <Tarjeta>
         <p className="text-sm text-humo">
-          No hay nada registrado en el tianguis. Lo que llegue de la bodega se registra en Recibir.
+          No hay nada registrado en {EL_LUGAR[lugar]}. Lo que llegue de la bodega se registra en Recibir.
         </p>
       </Tarjeta>
     );
@@ -192,8 +198,8 @@ function LoQueHay({ enTianguis }: { enTianguis: PrendaDelTianguis[] }) {
   return (
     <div className="space-y-3">
       <p className="text-sm text-humo">
-        <strong className="text-tinta">{piezas(total)}</strong> de {enTianguis.length}{" "}
-        {enTianguis.length === 1 ? "modelo" : "modelos"} en el tianguis. Toca una prenda para venderla.
+        <strong className="text-tinta">{piezas(total)}</strong> de {prendas.length}{" "}
+        {prendas.length === 1 ? "modelo" : "modelos"} en {EL_LUGAR[lugar]}. Toca una prenda para venderla.
       </p>
       <input
         value={busqueda}
@@ -203,7 +209,7 @@ function LoQueHay({ enTianguis }: { enTianguis: PrendaDelTianguis[] }) {
           if (e.key === "Enter" && lista.length === 1) vender(lista[0]!.id);
         }}
         placeholder="Buscar: VD 194, 84, midi..."
-        aria-label="Buscar en el inventario del tianguis"
+        aria-label={`Buscar en el inventario de ${EL_LUGAR[lugar]}`}
         autoComplete="off"
         type="search"
         inputMode="search"
@@ -214,7 +220,7 @@ function LoQueHay({ enTianguis }: { enTianguis: PrendaDelTianguis[] }) {
         className="campo"
       />
       {lista.length === 0 ? (
-        <p className="py-6 text-center text-sm text-humo">Ninguna prenda del tianguis coincide con esa busqueda.</p>
+        <p className="py-6 text-center text-sm text-humo">Ninguna prenda de {EL_LUGAR[lugar]} coincide con esa busqueda.</p>
       ) : (
         <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {lista.map((p) => (
@@ -227,7 +233,7 @@ function LoQueHay({ enTianguis }: { enTianguis: PrendaDelTianguis[] }) {
                 <span className="flex items-start justify-between gap-2">
                   <span className="codigo text-base">{p.codigo}</span>
                   <span className="shrink-0 rounded-sm bg-tinta px-2 py-0.5 text-sm font-bold tabular-nums text-marfil">
-                    {p.en_tianguis}
+                    {p.piezas}
                   </span>
                 </span>
                 <span className="mt-1 line-clamp-2 text-xs leading-snug text-humo">{p.descripcion}</span>
@@ -368,11 +374,13 @@ function Piezas({ valor, maximo, onCambiar }: { valor: number; maximo?: number; 
 // ---------------------------------------------------------------------------
 
 function Recibir({
+  lugar,
   catalogo,
   bodega,
   pendiente,
   onRegistrar,
 }: {
+  lugar: Lugar;
   catalogo: ModeloCaja[];
   bodega: Record<number, number>;
   pendiente: boolean;
@@ -409,7 +417,7 @@ function Recibir({
                 <p className="codigo text-sm">{l.modelo.codigo}</p>
                 <p className="truncate text-xs text-humo">{l.modelo.descripcion}</p>
                 <p className="text-xs text-humo">
-                  En bodega: {bodega[l.modelo.id] ?? 0} · En tianguis: {l.modelo.piezas}
+                  En bodega: {bodega[l.modelo.id] ?? 0} · En {lugar}: {l.modelo.piezas}
                 </p>
               </div>
               <Piezas
@@ -465,7 +473,7 @@ function Recibir({
             Registrar lo recibido ({piezas(total)})
           </Boton>
           <p className="mt-2 text-xs text-humo">
-            Baja de la bodega y sube al tianguis, con su hoja y folio. Si la bodega no las tenia registradas, se
+            Baja de la bodega y sube en {EL_LUGAR[lugar]}, con su hoja y folio. Si la bodega no las tenia registradas, se
             reciben igual y se cuadra en el conteo.
           </p>
         </Tarjeta>
@@ -475,25 +483,27 @@ function Recibir({
 }
 
 function Regresar({
+  lugar,
   catalogo,
-  enTianguis,
+  prendas,
   pendiente,
   onRegistrar,
 }: {
+  lugar: Lugar;
   catalogo: ModeloCaja[];
-  enTianguis: PrendaDelTianguis[];
+  prendas: PrendaDelLugar[];
   pendiente: boolean;
   onRegistrar: (lineas: { modelo_id: number; piezas: number }[], listo: () => void) => void;
 }) {
   const [cantidades, setCantidades] = useState<Record<number, number>>({});
   const [aviso, setAviso] = useState("");
   const total = Object.values(cantidades).reduce((s, n) => s + n, 0);
-  const maximo = (id: number) => enTianguis.find((p) => p.id === id)?.en_tianguis ?? 0;
+  const maximo = (id: number) => prendas.find((p) => p.id === id)?.piezas ?? 0;
 
-  if (!enTianguis.length) {
+  if (!prendas.length) {
     return (
       <Tarjeta>
-        <p className="text-sm text-humo">No hay nada registrado en el tianguis para regresar.</p>
+        <p className="text-sm text-humo">No hay nada registrado en {EL_LUGAR[lugar]} para regresar.</p>
       </Tarjeta>
     );
   }
@@ -510,7 +520,7 @@ function Regresar({
             const tope = maximo(m.id);
             const actual = cantidades[m.id] ?? 0;
             if (actual >= tope) {
-              setAviso(`De ${m.codigo} solo hay ${piezas(tope)} en el tianguis.`);
+              setAviso(`De ${m.codigo} solo hay ${piezas(tope)} en ${EL_LUGAR[lugar]}.`);
               return;
             }
             setAviso("");
@@ -521,23 +531,23 @@ function Regresar({
       </Tarjeta>
 
       <ul className="divide-y divide-linea overflow-hidden rounded-sm border border-linea bg-papel">
-        {enTianguis.map((p) => (
+        {prendas.map((p) => (
           <li key={p.id} className="flex items-center gap-2 px-3 py-2.5">
             <div className="min-w-0 flex-1">
               <p className="codigo text-sm">{p.codigo}</p>
               <p className="truncate text-xs text-humo">{p.descripcion}</p>
-              <p className="text-xs text-humo">En tianguis: {p.en_tianguis}</p>
+              <p className="text-xs text-humo">En {lugar}: {p.piezas}</p>
             </div>
             <button
               type="button"
-              onClick={() => setCantidades((c) => ({ ...c, [p.id]: p.en_tianguis }))}
+              onClick={() => setCantidades((c) => ({ ...c, [p.id]: p.piezas }))}
               className="rounded-sm border border-linea-fuerte px-2 py-2 text-xs font-semibold text-humo"
             >
               Todo
             </button>
             <Piezas
               valor={cantidades[p.id] ?? 0}
-              maximo={p.en_tianguis}
+              maximo={p.piezas}
               onCambiar={(n) => setCantidades((c) => ({ ...c, [p.id]: n }))}
             />
           </li>
@@ -563,18 +573,18 @@ function Regresar({
 }
 
 function Cierre({
-  enTianguis,
+  prendas,
   pendiente,
   onCerrar,
 }: {
-  enTianguis: PrendaDelTianguis[];
+  prendas: PrendaDelLugar[];
   pendiente: boolean;
   onCerrar: () => void;
 }) {
   const [confirmando, setConfirmando] = useState(false);
-  const total = enTianguis.reduce((s, p) => s + p.en_tianguis, 0);
+  const total = prendas.reduce((s, p) => s + p.piezas, 0);
 
-  if (!enTianguis.length) {
+  if (!prendas.length) {
     return (
       <Tarjeta>
         <p className="text-sm text-humo">No quedo nada en el tianguis: no hay que regresar.</p>
@@ -587,7 +597,7 @@ function Cierre({
       <Tarjeta>
         <p className="text-sm text-tinta">
           Al terminar el dia, todo lo que quedo en el tianguis regresa a la bodega en una sola hoja:{" "}
-          <strong>{piezas(total)}</strong> de {enTianguis.length} {enTianguis.length === 1 ? "modelo" : "modelos"}.
+          <strong>{piezas(total)}</strong> de {prendas.length} {prendas.length === 1 ? "modelo" : "modelos"}.
         </p>
         <p className="mt-1 text-xs text-humo">
           Si algo se va a quedar en el tianguis o ya se vendio sin registrar, primero ajustalo en Regresar.
@@ -595,13 +605,13 @@ function Cierre({
       </Tarjeta>
 
       <ul className="divide-y divide-linea overflow-hidden rounded-sm border border-linea bg-papel">
-        {enTianguis.map((p) => (
+        {prendas.map((p) => (
           <li key={p.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
             <div className="min-w-0">
               <p className="codigo text-sm">{p.codigo}</p>
               <p className="truncate text-xs text-humo">{p.descripcion}</p>
             </div>
-            <span className="cifra shrink-0 text-base font-semibold">{p.en_tianguis}</span>
+            <span className="cifra shrink-0 text-base font-semibold">{p.piezas}</span>
           </li>
         ))}
       </ul>

@@ -2,7 +2,7 @@ import "server-only";
 import type Database from "better-sqlite3";
 import { claveFondo, esCajaConocida, getDb, leerAjuste, nombreCaja } from "./db";
 import { EL_LUGAR, lugarDeCaja, type Lugar } from "./lugar";
-import { pasarDeBodegaAlTianguis } from "./movimientosTianguis";
+import { pasarDeBodega } from "./movimientosDeLugar";
 import { repartirDescuento } from "./dinero";
 import type { Resultado, VentaParaGuardar } from "./tipos";
 import { FORMAS_PAGO } from "./tipos";
@@ -301,7 +301,7 @@ export function registrarVenta(venta: VentaParaGuardar, cajaPorOmision = nombreC
             // que la prenda si salio de bodega pero no se registro. Se
             // registra ahora esa salida (baja la bodega, sube el tianguis) y
             // despues la venta, en vez de dejar el tianguis en negativo.
-            pasarDeBodegaAlTianguis(db, {
+            pasarDeBodega(db, "tianguis", {
               modeloId: modelo.id,
               piezas: faltan,
               persona: cobro || vendedora.nombre,

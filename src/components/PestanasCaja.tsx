@@ -2,21 +2,21 @@ import Link from "next/link";
 import { IconoCobrar, IconoPrenda } from "./iconos";
 
 /**
- * Cobrar | Inventario, para la caja del tianguis.
+ * Cobrar | Inventario, debajo del encabezado de la caja.
  *
- * Van a lo ancho de la pantalla, debajo del encabezado, como las pestanas
- * del tianguis en el sistema de bodega: en el telefono se tocan con el
- * pulgar sin apuntar, y el encabezado queda libre para el nombre y los
- * avisos. Solo salen con la cuenta TIANGUIS.
+ * Van a lo ancho de la pantalla, como las pestanas del tianguis en el
+ * sistema de bodega: en el telefono se tocan con el pulgar sin apuntar, y
+ * el encabezado queda libre para el nombre y los avisos. Salen para todos
+ * los que cobran (tienda y tianguis); el duenio no las ve, porque no cobra.
  */
-export default function PestanasTianguis({ activa }: { activa: "cobrar" | "inventario" }) {
+export default function PestanasCaja({ activa }: { activa: "cobrar" | "inventario" }) {
   const pestanas = [
     { clave: "cobrar", href: "/", texto: "Cobrar", Icono: IconoCobrar },
     { clave: "inventario", href: "/inventario", texto: "Inventario", Icono: IconoPrenda },
   ] as const;
 
   return (
-    <nav className="grid grid-cols-2 border-t border-linea-fuerte bg-papel" aria-label="Tianguis">
+    <nav className="grid grid-cols-2 border-t border-linea-fuerte bg-papel" aria-label="Caja">
       {pestanas.map(({ clave, href, texto, Icono }) => {
         const elegida = activa === clave;
         return (

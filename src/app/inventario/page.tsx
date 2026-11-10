@@ -1,28 +1,31 @@
 import { redirect } from "next/navigation";
-import PanelInventarioTianguis from "@/components/PanelInventarioTianguis";
-import PestanasTianguis from "@/components/PestanasTianguis";
+import PanelInventario from "@/components/PanelInventario";
+import PestanasCaja from "@/components/PestanasCaja";
 import { TituloPagina } from "@/components/ui";
 import { catalogoParaCaja } from "@/lib/consultas";
 import { cajaDeLugar } from "@/lib/db";
-import { inventarioDelTianguis, piezasEnBodega } from "@/lib/movimientosTianguis";
-import { lugarDeSesion, sesionActual } from "@/lib/sesion";
+import { inventarioDelLugar, piezasEnBodega } from "@/lib/movimientosDeLugar";
+import { esDuenio, lugarDeSesion, sesionActual } from "@/lib/sesion";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Inventario del tianguis: lo que hay (igual que en el sistema de bodega),
- * recibir de bodega, regresar a bodega y el cierre del dia. Es solo de la
- * caja del tianguis (el SUNMI), en su propia pagina para no mezclarlo con
- * cobrar. Se llega con la pestana Inventario de arriba.
+ * Inventario del lugar donde se cobra: lo que hay, recibir de bodega,
+ * regresar a bodega y (en el tianguis) el cierre del dia. Lo ve cualquiera
+ * que cobre, cada quien su lugar: con VENTAS o una vendedora, la tienda;
+ * con TIANGUIS, el tianguis. El duenio no, porque no cobra. Va en su propia
+ * pagina para no mezclarlo con cobrar; se llega con la pestana Inventario.
  */
 export default async function Pagina() {
   const sesion = await sesionActual();
   if (!sesion) redirect("/entrar");
-  if (lugarDeSesion(sesion) !== "tianguis") redirect("/");
+  if (esDuenio(sesion)) redirect("/");
 
-  const catalogo = catalogoParaCaja("tianguis");
+  const lugar = lugarDeSesion(sesion);
+  const catalogo = catalogoParaCaja(lugar);
   const bodega = piezasEnBodega();
-  const enTianguis = inventarioDelTianguis();
+  const prendas = inventarioDelLugar(lugar);
+  const enTianguis = lugar === "tianguis";
 
   return (
     <div className="min-h-screen bg-marfil">
@@ -31,19 +34,25 @@ export default async function Pagina() {
         <div className="flex items-center justify-between gap-2 px-3 py-2 sm:px-4 sm:py-2.5">
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <span className="marca text-lg sm:text-xl">Venus</span>
-            <span className="etiqueta mb-0 whitespace-nowrap">Tianguis {cajaDeLugar("tianguis")}</span>
+            <span className="etiqueta mb-0 whitespace-nowrap">
+              {enTianguis ? "Tianguis" : "Caja"} {cajaDeLugar(lugar)}
+            </span>
           </div>
           <span className="truncate text-sm font-semibold text-tinta">{sesion.nombre}</span>
         </div>
-        <PestanasTianguis activa="inventario" />
+        <PestanasCaja activa="inventario" />
       </header>
 
       <main className="mx-auto w-full max-w-2xl p-3 pb-10 sm:p-6">
         <TituloPagina
-          titulo="Inventario del tianguis"
-          descripcion="Lo que hay, lo que llega de la bodega, lo que regresa y el cierre del dia."
+          titulo={enTianguis ? "Inventario del tianguis" : "Inventario de la tienda"}
+          descripcion={
+            enTianguis
+              ? "Lo que hay, lo que llega de la bodega, lo que regresa y el cierre del dia."
+              : "Lo que hay en la tienda, lo que llega de la bodega y lo que regresa."
+          }
         />
-        <PanelInventarioTianguis catalogo={catalogo} bodega={bodega} enTianguis={enTianguis} />
+        <PanelInventario lugar={lugar} catalogo={catalogo} bodega={bodega} prendas={prendas} />
       </main>
     </div>
   );

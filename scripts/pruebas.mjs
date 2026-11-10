@@ -1118,7 +1118,7 @@ comprobar(
 // =======================================================================
 seccion("17. Entradas y salidas del tianguis desde la caja");
 // =======================================================================
-const mov = await import(pathToFileURL(path.join(RAIZ, "src", "lib", "movimientosTianguis.ts")).href);
+const mov = await import(pathToFileURL(path.join(RAIZ, "src", "lib", "movimientosDeLugar.ts")).href);
 
 // La bodega ya iba en la hoja 5: la caja sigue el mismo contador.
 db.prepare(
@@ -1128,6 +1128,7 @@ db.prepare("UPDATE modelos SET existencia = 10, en_tianguis = 0 WHERE id = ?").r
 db.prepare("UPDATE modelos SET existencia = 1, en_tianguis = 0 WHERE id = ?").run(B.id);
 
 const recibido = mov.recibirDeBodega(
+  "tianguis",
   [
     { modelo_id: A.id, piezas: 4 },
     { modelo_id: B.id, piezas: 3 },
@@ -1156,12 +1157,12 @@ iguales(
   2
 );
 
-const deMas = mov.regresarDelTianguis([{ modelo_id: B.id, piezas: 9 }], "TIANGUIS");
+const deMas = mov.regresarABodega("tianguis", [{ modelo_id: B.id, piezas: 9 }], "TIANGUIS");
 comprobar("no se regresa mas de lo que hay en el tianguis", deMas.ok === false);
 iguales("y no se movio nada", [existenciaDe(B.id), enTianguis(B.id)], [-2, 3]);
 iguales("ni se gasto un folio", db.prepare("SELECT valor FROM config WHERE clave = 'folio_tianguis'").get().valor, "6");
 
-const regreso = mov.regresarDelTianguis([{ modelo_id: B.id, piezas: 1 }], "TIANGUIS");
+const regreso = mov.regresarABodega("tianguis", [{ modelo_id: B.id, piezas: 1 }], "TIANGUIS");
 comprobar("se regresa a bodega con su hoja", regreso.ok && regreso.datos.folio === "TIA-0007");
 iguales("baja el tianguis y sube la bodega", [existenciaDe(B.id), enTianguis(B.id)], [-1, 2]);
 
@@ -1171,21 +1172,45 @@ db.prepare("DELETE FROM caja_precios WHERE modelo_id = ?").run(B.id);
 db.prepare(
   "INSERT INTO caja_precios (modelo_id, precio) VALUES (?, 65000) ON CONFLICT(modelo_id) DO UPDATE SET precio = 65000"
 ).run(A.id);
-const hay = mov.inventarioDelTianguis();
+const hay = mov.inventarioDelLugar("tianguis");
 const deA = hay.find((p) => p.id === A.id);
 comprobar(
   "lo que hay trae piezas, tallas y precio de cada prenda",
-  deA && deA.en_tianguis === 5 && deA.tallas === "CH M" && deA.precio > 0,
+  deA && deA.piezas === 5 && deA.tallas === "CH M" && deA.precio > 0,
   JSON.stringify(deA)
 );
 iguales("la que no tiene precio dice que no tiene", hay.find((p) => p.id === B.id)?.precio, null);
-comprobar("solo trae lo que si esta en el tianguis", hay.every((p) => p.en_tianguis > 0));
+comprobar("solo trae lo que si esta en el tianguis", hay.every((p) => p.piezas > 0));
 
 const cierre = mov.cerrarElDia("TIANGUIS");
 comprobar("el cierre regresa todo lo que quedo, en una hoja", cierre.ok && cierre.datos.folio === "TIA-0008");
 iguales("el tianguis queda vacio", db.prepare("SELECT COALESCE(SUM(en_tianguis), 0) AS n FROM modelos WHERE en_tianguis > 0").get().n, 0);
 iguales("y la bodega recupera esas piezas", [existenciaDe(A.id), existenciaDe(B.id)], [10, 1]);
 comprobar("cerrar otra vez avisa que no hay nada", mov.cerrarElDia("TIANGUIS").ok === false);
+
+// La tienda tambien recibe y regresa desde la caja, con su propia hoja (TIE).
+db.prepare(
+  "INSERT INTO config (clave, valor) VALUES ('folio_tienda', '2') ON CONFLICT(clave) DO UPDATE SET valor = '2'"
+).run();
+db.prepare("UPDATE modelos SET existencia = 6, en_tienda = 1 WHERE id = ?").run(D.id);
+const enTiendaD = () => db.prepare("SELECT existencia, en_tienda FROM modelos WHERE id = ?").get(D.id);
+const recibidoTienda = mov.recibirDeBodega("tienda", [{ modelo_id: D.id, piezas: 2 }], "VENTAS");
+comprobar("la tienda recibe de bodega con la siguiente hoja TIE", recibidoTienda.ok && recibidoTienda.datos.folio === "TIE-0003");
+iguales("baja la bodega y sube la tienda, sin tocar el tianguis", enTiendaD(), { existencia: 4, en_tienda: 3 });
+const hojaTienda = db.prepare("SELECT destino, tipo, persona FROM remisiones WHERE folio = 'TIE-0003'").get();
+iguales("la hoja es un envio a la tienda firmado por quien entro", hojaTienda, { destino: "TIENDA", tipo: "envio", persona: "VENTAS" });
+comprobar(
+  "y queda como salida a tienda en el historial",
+  Boolean(db.prepare("SELECT 1 FROM movimientos WHERE modelo_id = ? AND tipo = 'salida_tienda' AND cantidad = 2").get(D.id))
+);
+comprobar("la tienda no regresa mas de lo que tiene", mov.regresarABodega("tienda", [{ modelo_id: D.id, piezas: 9 }], "VENTAS").ok === false);
+const regresoTienda = mov.regresarABodega("tienda", [{ modelo_id: D.id, piezas: 1 }], "VENTAS");
+comprobar("la tienda regresa a bodega con su hoja", regresoTienda.ok && regresoTienda.datos.folio === "TIE-0004");
+iguales("baja la tienda y sube la bodega", enTiendaD(), { existencia: 5, en_tienda: 2 });
+comprobar(
+  "lo que hay en la tienda trae sus piezas de tienda",
+  mov.inventarioDelLugar("tienda").find((p) => p.id === D.id)?.piezas === 2
+);
 
 // --- Recoger -----------------------------------------------------------
 db.close();

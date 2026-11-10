@@ -39,7 +39,7 @@ import {
   type TipoDescuento,
   type VentaParaGuardar,
 } from "@/lib/tipos";
-import PestanasTianguis from "./PestanasTianguis";
+import PestanasCaja from "./PestanasCaja";
 import { Boton, Insignia } from "./ui";
 import {
   IconoAlerta,
@@ -79,6 +79,8 @@ type Props = {
   caja: string;
   /** Donde se cobra: de ahi salen las piezas que se descuentan. */
   lugar: Lugar;
+  /** Si la cuenta puede ver Inventario (todas menos la del duenio). */
+  conInventario: boolean;
   negocio: string;
   ultimoFolio: number;
 };
@@ -101,6 +103,7 @@ export default function Cobrar({
   cuenta,
   caja,
   lugar,
+  conInventario,
   negocio,
   ultimoFolio,
 }: Props) {
@@ -696,8 +699,8 @@ export default function Cobrar({
   return (
     <div className="flex min-h-screen flex-col bg-marfil">
       {/* Barra de arriba: quien cobra y como anda la conexion. En el telefono
-          se queda pegada arriba y todo va en un renglon corto. En el tianguis
-          lleva abajo las pestanas Cobrar | Inventario. */}
+          se queda pegada arriba y todo va en un renglon corto. Abajo lleva
+          las pestanas Cobrar | Inventario. */}
       <header className="capitone sticky top-0 z-30 border-b border-linea-fuerte">
         <div className="flex items-center justify-between gap-2 px-3 py-2 sm:px-4 sm:py-2.5">
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
@@ -777,7 +780,7 @@ export default function Cobrar({
             </div>
           </div>
         </div>
-        {lugar === "tianguis" ? <PestanasTianguis activa="cobrar" /> : null}
+        {conInventario ? <PestanasCaja activa="cobrar" /> : null}
       </header>
 
       {/* En el telefono abajo queda fija la barra del total y Cobrar: el pb

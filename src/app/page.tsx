@@ -3,7 +3,7 @@ import Cobrar from "@/components/Cobrar";
 import { Aviso, BotonEnlace, Tarjeta } from "@/components/ui";
 import { catalogoParaCaja, nombreNegocio, quienesVenden, ultimoFolio } from "@/lib/consultas";
 import { cajaDeLugar } from "@/lib/db";
-import { lugarDeSesion, sesionActual } from "@/lib/sesion";
+import { esDuenio, lugarDeSesion, sesionActual } from "@/lib/sesion";
 import type { ModeloCaja, QuienVende } from "@/lib/tipos";
 
 /**
@@ -65,6 +65,7 @@ export default async function Pagina() {
       cuenta={{ id: sesion.id, nombre: sesion.nombre }}
       caja={caja}
       lugar={lugar}
+      conInventario={!esDuenio(sesion)}
       negocio={negocio}
       ultimoFolio={folio}
     />
