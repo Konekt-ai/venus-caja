@@ -1165,6 +1165,22 @@ const regreso = mov.regresarDelTianguis([{ modelo_id: B.id, piezas: 1 }], "TIANG
 comprobar("se regresa a bodega con su hoja", regreso.ok && regreso.datos.folio === "TIA-0007");
 iguales("baja el tianguis y sube la bodega", [existenciaDe(B.id), enTianguis(B.id)], [-1, 2]);
 
+// "Lo que hay": la misma lista que Tianguis > Inventario de la bodega.
+db.prepare("UPDATE modelos SET tallas = 'CH M' WHERE id = ?").run(A.id);
+db.prepare("DELETE FROM caja_precios WHERE modelo_id = ?").run(B.id);
+db.prepare(
+  "INSERT INTO caja_precios (modelo_id, precio) VALUES (?, 65000) ON CONFLICT(modelo_id) DO UPDATE SET precio = 65000"
+).run(A.id);
+const hay = mov.inventarioDelTianguis();
+const deA = hay.find((p) => p.id === A.id);
+comprobar(
+  "lo que hay trae piezas, tallas y precio de cada prenda",
+  deA && deA.en_tianguis === 5 && deA.tallas === "CH M" && deA.precio > 0,
+  JSON.stringify(deA)
+);
+iguales("la que no tiene precio dice que no tiene", hay.find((p) => p.id === B.id)?.precio, null);
+comprobar("solo trae lo que si esta en el tianguis", hay.every((p) => p.en_tianguis > 0));
+
 const cierre = mov.cerrarElDia("TIANGUIS");
 comprobar("el cierre regresa todo lo que quedo, en una hoja", cierre.ok && cierre.datos.folio === "TIA-0008");
 iguales("el tianguis queda vacio", db.prepare("SELECT COALESCE(SUM(en_tianguis), 0) AS n FROM modelos WHERE en_tianguis > 0").get().n, 0);

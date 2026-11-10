@@ -39,6 +39,7 @@ import {
   type TipoDescuento,
   type VentaParaGuardar,
 } from "@/lib/tipos";
+import PestanasTianguis from "./PestanasTianguis";
 import { Boton, Insignia } from "./ui";
 import {
   IconoAlerta,
@@ -346,6 +347,20 @@ export default function Cobrar({
     },
     [enfocarBuscador]
   );
+
+  // Desde Inventario > Lo que hay se toca una prenda para venderla: llega
+  // aqui como /?agregar=ID y entra a la venta, como si se hubiera escaneado.
+  // Se quita de la direccion para que recargar no la agregue otra vez.
+  const yaSeAgrego = useRef(false);
+  useEffect(() => {
+    if (yaSeAgrego.current) return;
+    yaSeAgrego.current = true;
+    const id = Number(new URLSearchParams(window.location.search).get("agregar"));
+    if (!id) return;
+    window.history.replaceState(null, "", "/");
+    const modelo = catalogo.find((m) => m.id === id);
+    if (modelo) agregar(modelo, 1);
+  }, [catalogo, agregar]);
 
   const agregarPrimero = useCallback(() => {
     if (!resultados.length) {
@@ -681,95 +696,88 @@ export default function Cobrar({
   return (
     <div className="flex min-h-screen flex-col bg-marfil">
       {/* Barra de arriba: quien cobra y como anda la conexion. En el telefono
-          se queda pegada arriba y todo va en un renglon corto. */}
-      <header className="capitone sticky top-0 z-30 flex items-center justify-between gap-2 border-b border-linea-fuerte px-3 py-2 sm:px-4 sm:py-2.5">
-        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-          <span className="marca text-lg sm:text-xl">Venus</span>
-          <span className="etiqueta mb-0 whitespace-nowrap">
-            {lugar === "tianguis" ? "Tianguis" : "Caja"} {caja}
-          </span>
-        </div>
-        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-          {pendientes > 0 ? (
-            <Insignia tono="aviso">
-              {pendientes}
-              <span className="hidden sm:inline">{pendientes === 1 ? " venta por subir" : " ventas por subir"}</span>
-              <span className="sm:hidden"> por subir</span>
-            </Insignia>
-          ) : null}
-          {!enLinea ? (
-            <Insignia tono="aviso">
-              <IconoSinRed tamano={14} />
-              <span className="hidden sm:inline">Sin conexion</span>
-            </Insignia>
-          ) : null}
-          {/* En el tianguis, lo que entra y sale de la bodega va en su propia
-              pantalla, aparte de cobrar. */}
-          {lugar === "tianguis" ? (
-            <button
-              type="button"
-              onClick={() => router.push("/inventario")}
-              className="rounded-sm border border-linea-fuerte bg-papel px-3 py-2 text-sm font-semibold text-tinta hover:border-oro hover:bg-oro-tenue sm:py-1.5"
-            >
-              Inventario
-            </button>
-          ) : null}
-          {/* El nombre es el boton: es donde la vendedora ya esta mirando
-              cuando quiere entregar el turno. */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setMenuVendedora((abierto) => !abierto)}
-              className="flex max-w-[9rem] items-center gap-2 rounded-sm border border-linea-fuerte bg-papel px-3 py-2 text-sm font-semibold text-tinta hover:border-oro hover:bg-oro-tenue sm:max-w-none sm:py-1.5"
-            >
-              <IconoPersona tamano={16} />
-              <span className="truncate">{cuenta.nombre}</span>
-              <span className="hidden text-[0.65rem] font-normal text-humo lg:inline">F10</span>
-            </button>
-
-            {menuVendedora ? (
-              <div className="absolute right-0 top-full z-40 mt-1 w-64 rounded-sm border border-linea-fuerte bg-papel p-3">
-                <p className="mb-3 text-xs leading-relaxed text-humo">
-                  La venta que llevas no se pierde: al volver a entrar sigue aqui.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => router.push("/entrar")}
-                  className="mb-2 flex w-full items-center gap-2 rounded-sm bg-vino px-3 py-3 text-sm font-semibold text-marfil hover:bg-vino-oscuro"
-                >
-                  <IconoPersona tamano={16} />
-                  Cambiar de vendedora
-                </button>
-                {/* Para cancelar o reimprimir un ticket y hacer el corte. */}
-                <button
-                  type="button"
-                  onClick={() => router.push("/ventas")}
-                  className="mb-2 flex w-full items-center gap-2 rounded-sm border border-linea-fuerte px-3 py-3 text-sm font-semibold text-tinta hover:border-oro"
-                >
-                  <IconoEspera tamano={16} />
-                  Ventas del dia y corte
-                </button>
-                <button
-                  type="button"
-                  onClick={() => router.push("/impresora")}
-                  className="mb-2 flex w-full items-center gap-2 rounded-sm border border-linea-fuerte px-3 py-3 text-sm font-semibold text-tinta hover:border-oro"
-                >
-                  <IconoImprimir tamano={16} />
-                  Impresora de este equipo
-                </button>
-                <form action={salir}>
-                  <button
-                    type="submit"
-                    className="flex w-full items-center gap-2 rounded-sm border border-linea-fuerte px-3 py-3 text-sm font-semibold text-tinta hover:border-oro"
-                  >
-                    <IconoCandado tamano={16} />
-                    Cerrar la caja
-                  </button>
-                </form>
-              </div>
+          se queda pegada arriba y todo va en un renglon corto. En el tianguis
+          lleva abajo las pestanas Cobrar | Inventario. */}
+      <header className="capitone sticky top-0 z-30 border-b border-linea-fuerte">
+        <div className="flex items-center justify-between gap-2 px-3 py-2 sm:px-4 sm:py-2.5">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+            <span className="marca text-lg sm:text-xl">Venus</span>
+            <span className="etiqueta mb-0 whitespace-nowrap">
+              {lugar === "tianguis" ? "Tianguis" : "Caja"} {caja}
+            </span>
+          </div>
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+            {pendientes > 0 ? (
+              <Insignia tono="aviso">
+                {pendientes}
+                <span className="hidden sm:inline">{pendientes === 1 ? " venta por subir" : " ventas por subir"}</span>
+                <span className="sm:hidden"> por subir</span>
+              </Insignia>
             ) : null}
+            {!enLinea ? (
+              <Insignia tono="aviso">
+                <IconoSinRed tamano={14} />
+                <span className="hidden sm:inline">Sin conexion</span>
+              </Insignia>
+            ) : null}
+            {/* El nombre es el boton: es donde la vendedora ya esta mirando
+                cuando quiere entregar el turno. */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setMenuVendedora((abierto) => !abierto)}
+                className="flex max-w-[9rem] items-center gap-2 rounded-sm border border-linea-fuerte bg-papel px-3 py-2 text-sm font-semibold text-tinta hover:border-oro hover:bg-oro-tenue sm:max-w-none sm:py-1.5"
+              >
+                <IconoPersona tamano={16} />
+                <span className="truncate">{cuenta.nombre}</span>
+                <span className="hidden text-[0.65rem] font-normal text-humo lg:inline">F10</span>
+              </button>
+
+              {menuVendedora ? (
+                <div className="absolute right-0 top-full z-40 mt-1 w-64 rounded-sm border border-linea-fuerte bg-papel p-3">
+                  <p className="mb-3 text-xs leading-relaxed text-humo">
+                    La venta que llevas no se pierde: al volver a entrar sigue aqui.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => router.push("/entrar")}
+                    className="mb-2 flex w-full items-center gap-2 rounded-sm bg-vino px-3 py-3 text-sm font-semibold text-marfil hover:bg-vino-oscuro"
+                  >
+                    <IconoPersona tamano={16} />
+                    Cambiar de vendedora
+                  </button>
+                  {/* Para cancelar o reimprimir un ticket y hacer el corte. */}
+                  <button
+                    type="button"
+                    onClick={() => router.push("/ventas")}
+                    className="mb-2 flex w-full items-center gap-2 rounded-sm border border-linea-fuerte px-3 py-3 text-sm font-semibold text-tinta hover:border-oro"
+                  >
+                    <IconoEspera tamano={16} />
+                    Ventas del dia y corte
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => router.push("/impresora")}
+                    className="mb-2 flex w-full items-center gap-2 rounded-sm border border-linea-fuerte px-3 py-3 text-sm font-semibold text-tinta hover:border-oro"
+                  >
+                    <IconoImprimir tamano={16} />
+                    Impresora de este equipo
+                  </button>
+                  <form action={salir}>
+                    <button
+                      type="submit"
+                      className="flex w-full items-center gap-2 rounded-sm border border-linea-fuerte px-3 py-3 text-sm font-semibold text-tinta hover:border-oro"
+                    >
+                      <IconoCandado tamano={16} />
+                      Cerrar la caja
+                    </button>
+                  </form>
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
+        {lugar === "tianguis" ? <PestanasTianguis activa="cobrar" /> : null}
       </header>
 
       {/* En el telefono abajo queda fija la barra del total y Cobrar: el pb

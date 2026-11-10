@@ -151,8 +151,14 @@ descuentos, precio de una sola venta y sigue cobrando sin senal.
 
 ### Inventario del tianguis
 
-Con la cuenta TIANGUIS, arriba junto al nombre esta el boton **Inventario**.
-Abre una pantalla aparte (para no llenar la de cobrar) con tres pestanas:
+Con la cuenta TIANGUIS, debajo del encabezado van las pestanas **Cobrar |
+Inventario**, a lo ancho para tocarlas con el pulgar. Inventario es una
+pantalla aparte (para no llenar la de cobrar) con cuatro pestanas:
+
+- **Lo que hay**: lo que esta en el tianguis, igual que *Tianguis >
+  Inventario* en el sistema de bodega (las piezas son las mismas, de la
+  misma base): codigo, piezas, tallas y precio, con buscador. Tocar una
+  prenda la agrega a la venta, como si se hubiera escaneado.
 
 - **Recibir**: se escanea lo que llego de la bodega (la misma prenda otra
   vez suma una pieza) y se registra. Baja la bodega y sube el tianguis. Si

@@ -205,15 +205,35 @@ export function cerrarElDia(persona: string): Resultado<HojaRegistrada> {
   return regresarDelTianguis(quedan, persona, "Cierre del tianguis");
 }
 
-export type PrendaDelTianguis = { id: number; codigo: string; descripcion: string; en_tianguis: number; existencia: number };
+export type PrendaDelTianguis = {
+  id: number;
+  codigo: string;
+  codigo_norm: string;
+  numero: number | null;
+  descripcion: string;
+  categoria: string;
+  tallas: string;
+  en_tianguis: number;
+  existencia: number;
+  /** Precio registrado en centavos, o null si no tiene. */
+  precio: number | null;
+};
 
-/** Lo que hay en el tianguis ahorita, para regresar y para el cierre. */
+/**
+ * Lo que hay en el tianguis ahorita: la misma lista que "Tianguis >
+ * Inventario" en el sistema de bodega (activos y con piezas, en el mismo
+ * orden), con lo que hace falta para verla, regresarla y cerrar el dia.
+ */
 export function inventarioDelTianguis(): PrendaDelTianguis[] {
   return getDb()
     .prepare(
-      `SELECT id, codigo, descripcion, en_tianguis, existencia FROM modelos
-        WHERE activo = 1 AND en_tianguis > 0
-        ORDER BY prefijo, numero, codigo_norm`
+      `SELECT m.id, m.codigo, m.codigo_norm, m.numero, m.descripcion, m.categoria, m.tallas,
+              m.en_tianguis, m.existencia,
+              CASE WHEN p.precio > 0 THEN p.precio END AS precio
+         FROM modelos m
+         LEFT JOIN caja_precios p ON p.modelo_id = m.id
+        WHERE m.activo = 1 AND m.en_tianguis > 0
+        ORDER BY m.prefijo, m.numero, m.codigo_norm`
     )
     .all() as PrendaDelTianguis[];
 }

@@ -4,17 +4,20 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { cierreDelDia, recibir, regresar } from "@/acciones/inventarioTianguis";
 import { buscar, hayEmpate, partirCantidad } from "@/lib/busqueda";
+import { normalizarCodigo, normalizarTexto, partirCodigo } from "@/lib/codigos";
+import { pesos } from "@/lib/dinero";
 import type { PrendaDelTianguis } from "@/lib/movimientosTianguis";
 import type { ModeloCaja } from "@/lib/tipos";
 import { Aviso, Boton, Tarjeta } from "./ui";
 import { IconoBuscar, IconoCerrar, IconoMas, IconoMenos } from "./iconos";
 
-type Pestana = "recibir" | "regresar" | "cierre";
+type Pestana = "hay" | "recibir" | "regresar" | "cierre";
 
 const PESTANAS: { valor: Pestana; nombre: string }[] = [
+  { valor: "hay", nombre: "Lo que hay" },
   { valor: "recibir", nombre: "Recibir" },
   { valor: "regresar", nombre: "Regresar" },
-  { valor: "cierre", nombre: "Cierre del dia" },
+  { valor: "cierre", nombre: "Cierre" },
 ];
 
 type Mensaje = { tipo: "ok" | "error"; texto: string; detalles?: string[] } | null;
@@ -37,7 +40,7 @@ export default function PanelInventarioTianguis({
   bodega: Record<number, number>;
   enTianguis: PrendaDelTianguis[];
 }) {
-  const [pestana, setPestana] = useState<Pestana>("recibir");
+  const [pestana, setPestana] = useState<Pestana>("hay");
   const [mensaje, setMensaje] = useState<Mensaje>(null);
   const [pendiente, empezar] = useTransition();
   const router = useRouter();
@@ -61,7 +64,7 @@ export default function PanelInventarioTianguis({
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
         {PESTANAS.map((p) => (
           <button
             key={p.valor}
@@ -71,7 +74,7 @@ export default function PanelInventarioTianguis({
               setMensaje(null);
             }}
             aria-current={pestana === p.valor ? "true" : undefined}
-            className={`min-h-12 rounded-sm border px-2 text-sm font-semibold ${
+            className={`min-h-12 rounded-sm border px-1 text-xs font-semibold leading-tight sm:text-sm ${
               pestana === p.valor ? "border-vino bg-vino-palido text-vino" : "border-linea-fuerte bg-papel text-humo"
             }`}
           >
@@ -92,6 +95,8 @@ export default function PanelInventarioTianguis({
           ) : null}
         </Aviso>
       ) : null}
+
+      {pestana === "hay" ? <LoQueHay enTianguis={enTianguis} /> : null}
 
       {pestana === "recibir" ? (
         <Recibir
@@ -139,6 +144,105 @@ export default function PanelInventarioTianguis({
 }
 
 // ---------------------------------------------------------------------------
+
+/**
+ * Lo que hay en el tianguis: la misma lista que "Tianguis > Inventario" del
+ * sistema de bodega, con las piezas, el codigo, las tallas y el precio, y la
+ * misma busqueda (84 encuentra 084, vd194 encuentra VD 194, o por nombre).
+ * Igual que alla, tocar una prenda lleva a venderla.
+ */
+function LoQueHay({ enTianguis }: { enTianguis: PrendaDelTianguis[] }) {
+  const [busqueda, setBusqueda] = useState("");
+  const router = useRouter();
+
+  const lista = useMemo(() => {
+    const texto = busqueda.trim();
+    if (!texto) return enTianguis;
+    const codigo = normalizarCodigo(texto);
+    const libre = normalizarTexto(texto);
+    const { numero } = partirCodigo(texto);
+    return enTianguis
+      .map((p) => {
+        let puntaje = 99;
+        if (p.codigo_norm === codigo) puntaje = 0;
+        else if (numero !== null && p.numero === numero) puntaje = 1;
+        else if (codigo && p.codigo_norm.startsWith(codigo)) puntaje = 2;
+        else if (codigo && p.codigo_norm.includes(codigo)) puntaje = 3;
+        else if (libre && normalizarTexto(`${p.descripcion} ${p.categoria}`).includes(libre)) puntaje = 4;
+        return { p, puntaje };
+      })
+      .filter((x) => x.puntaje < 99)
+      .sort((a, b) => a.puntaje - b.puntaje || a.p.codigo.localeCompare(b.p.codigo))
+      .map((x) => x.p);
+  }, [enTianguis, busqueda]);
+
+  const total = enTianguis.reduce((s, p) => s + p.en_tianguis, 0);
+  const vender = (id: number) => router.push(`/?agregar=${id}`);
+
+  if (!enTianguis.length) {
+    return (
+      <Tarjeta>
+        <p className="text-sm text-humo">
+          No hay nada registrado en el tianguis. Lo que llegue de la bodega se registra en Recibir.
+        </p>
+      </Tarjeta>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-humo">
+        <strong className="text-tinta">{piezas(total)}</strong> de {enTianguis.length}{" "}
+        {enTianguis.length === 1 ? "modelo" : "modelos"} en el tianguis. Toca una prenda para venderla.
+      </p>
+      <input
+        value={busqueda}
+        onChange={(e) => setBusqueda(e.target.value)}
+        onKeyDown={(e) => {
+          // El lector escribe el codigo y da Enter: si es una sola prenda, a venderla.
+          if (e.key === "Enter" && lista.length === 1) vender(lista[0]!.id);
+        }}
+        placeholder="Buscar: VD 194, 84, midi..."
+        aria-label="Buscar en el inventario del tianguis"
+        autoComplete="off"
+        type="search"
+        inputMode="search"
+        enterKeyHint="search"
+        autoCorrect="off"
+        autoCapitalize="characters"
+        spellCheck={false}
+        className="campo"
+      />
+      {lista.length === 0 ? (
+        <p className="py-6 text-center text-sm text-humo">Ninguna prenda del tianguis coincide con esa busqueda.</p>
+      ) : (
+        <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {lista.map((p) => (
+            <li key={p.id}>
+              <button
+                type="button"
+                onClick={() => vender(p.id)}
+                className="flex h-full w-full flex-col rounded-sm border border-linea bg-papel p-3 text-left hover:border-oro active:border-oro"
+              >
+                <span className="flex items-start justify-between gap-2">
+                  <span className="codigo text-base">{p.codigo}</span>
+                  <span className="shrink-0 rounded-sm bg-tinta px-2 py-0.5 text-sm font-bold tabular-nums text-marfil">
+                    {p.en_tianguis}
+                  </span>
+                </span>
+                <span className="mt-1 line-clamp-2 text-xs leading-snug text-humo">{p.descripcion}</span>
+                {p.tallas ? <span className="mt-0.5 truncate text-xs text-humo">Tallas {p.tallas}</span> : null}
+                <span className="mt-auto pt-1.5 text-sm font-semibold tabular-nums">
+                  {p.precio ? pesos(p.precio) : <span className="text-xs font-semibold text-ambar">Sin precio</span>}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 /**
  * El buscador de prendas: el lector escribe el codigo y da Enter, igual que
